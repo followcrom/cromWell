@@ -1,0 +1,18 @@
+# .env
+.env
+
+# venv
+cw_venv/
+
+# Data files
+data/
+fitbit_data.log
+
+# Documentation
+docs/
+
+# Del files
+delete/
+
+# Tokens
+tokens.json
