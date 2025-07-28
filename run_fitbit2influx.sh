@@ -1,57 +1,55 @@
 #!/bin/bash
 
-# === CONFIG ===
+# === CONFIGURATION ===
 SCRIPT_DIR="/var/www/cromwell"
 VENV_DIR="$SCRIPT_DIR/cw_venv"
-LOG_FILE="$SCRIPT_DIR/cromwell_cron.log"
-EMAIL="hello@followcrom.com"
+ERROR_LOG_FILE="$SCRIPT_DIR/cromwell_error.log"
+EMAIL="followcrom@gmail.com"
+# EMAIL="hello@followcrom.com"
 
-# === LOG START ===
-echo "$(date)" >> "$LOG_FILE"
-echo "=== Running fitbit2influx.py ===" >> "$LOG_FILE"
+# === FUNCTION TO HANDLE FAILURES ===
+handle_failure() {
+    local error_message="$1"
+    local timestamp
+    timestamp=$(date)
 
-# === CHECK DIRECTORY ===
-cd "$SCRIPT_DIR" || {
-    echo "[$(date)] ❌ Failed to cd into $SCRIPT_DIR" >> "$LOG_FILE"
+    local full_report="Timestamp: $timestamp
+Hostname: $(hostname)
+Error:
+--------------------------------------------------
+$error_message
+--------------------------------------------------
+"
+    echo "$full_report" > "$ERROR_LOG_FILE"
+    echo "$full_report" | mail -s "❌ Fitbit2Influx Job Failed" "$EMAIL"
+    echo "[ERROR] $error_message"
     exit 1
 }
 
-# === CHECK VENV ===
-if [ ! -d "$VENV_DIR" ]; then
-    echo "[$(date)] ❌ Virtual environment not found at $VENV_DIR" >> "$LOG_FILE"
-    exit 1
+# === SCRIPT EXECUTION ===
+
+echo "[INFO] Changing to script directory: $SCRIPT_DIR"
+cd "$SCRIPT_DIR" || handle_failure "Fatal Error: Could not change directory to $SCRIPT_DIR."
+
+echo "[INFO] Checking for virtual environment at $VENV_DIR"
+if [ ! -f "$VENV_DIR/bin/activate" ]; then
+    handle_failure "Fatal Error: Virtual environment not found at $VENV_DIR."
 fi
 
-# === ACTIVATE ===
+echo "[INFO] Activating virtual environment"
 source "$VENV_DIR/bin/activate"
-echo "[$(date)] ✅ Virtual environment activated" >> "$LOG_FILE"
 
-# === RUN SCRIPT ===
-echo "[$(date)] ▶️ Running fitbit2influx.py..." >> "$LOG_FILE"
-echo "" >> "$LOG_FILE"
-python "$SCRIPT_DIR/fitbit2influx.py" >> "$LOG_FILE" 2>&1
+echo "[INFO] Running fitbit2influx.py"
+PYTHON_OUTPUT=$(python "$SCRIPT_DIR/fitbit2influx.py" 2>&1)
 EXIT_CODE=$?
+deactivate
 
-# === ERROR HANDLING ===
 if [ $EXIT_CODE -ne 0 ]; then
-    TIMESTAMP=$(date)
-    echo "[$TIMESTAMP] ❌ Script failed with exit code $EXIT_CODE" >> "$LOG_FILE"
+    handle_failure "Python script failed with exit code $EXIT_CODE.
 
-    email_body="$TIMESTAMP - Fitbit2Influx job failed on $(hostname)
-The cron job failed with exit code $EXIT_CODE.
-Check the log file at $LOG_FILE for details."
-
-    echo "$email_body" | mail -s "❌ Fitbit2Influx Job Failed" "$EMAIL"
-    echo "[$(date)] 📧 Notification email sent to $EMAIL" >> "$LOG_FILE"
-    echo "" >> "$LOG_FILE"
-else
-    echo "✅ Script executed successfully" >> "$LOG_FILE"
+Output was:
+$PYTHON_OUTPUT"
 fi
 
-# === CLEANUP ===
-deactivate
-echo "🔚 fitbit2influx.py execution completed" >> "$LOG_FILE"
-
-# === LOG END ===
-echo "[$(date)] === End of fitbit2influx.py run ===" >> "$LOG_FILE"
-echo "" >> "$LOG_FILE"
+echo "[INFO] Script completed successfully."
+exit 0

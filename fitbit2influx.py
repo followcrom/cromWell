@@ -4,7 +4,7 @@
 """
 This script fetches personal Fitbit data (e.g., heart rate, sleep, steps, activity)
 via the Fitbit API and writes it to an InfluxDB 2.x database. It's designed
-to be run periodically (e.g., twice a day) via a cron job.
+to be run once daily at the end of the day via a cron job.
 """
 
 import base64
@@ -15,6 +15,7 @@ import pytz
 import logging
 import os
 import sys
+import hashlib
 from requests.exceptions import ConnectionError
 from datetime import datetime, timedelta
 from influxdb_client import InfluxDBClient
@@ -31,33 +32,25 @@ load_dotenv()
 # =============================================================================
 
 # --- Logging Configuration ---
-FITBIT_LOG_FILE_PATH = os.environ.get("FITBIT_LOG_FILE_PATH", "./fitbit_data.log")
+FITBIT_LOG_FILE_PATH = os.environ.get("FITBIT_LOG_FILE_PATH")
 # OVERWRITE_LOG_FILE: Set to True to clear the log file on each run / Set to False to append to the log file
 OVERWRITE_LOG_FILE = True
 
 # --- Fitbit API Configuration ---
-# These are loaded from environment variables.
 CLIENT_ID = os.getenv("CLIENT_ID")
 CLIENT_SECRET = os.getenv("CLIENT_SECRET")
-TOKEN_FILE_PATH = os.getenv("TOKEN_FILE_PATH", "./tokens.json")
+TOKEN_FILE_PATH = os.getenv("TOKEN_FILE_PATH")
 FITBIT_LANGUAGE = os.getenv("FITBIT_LANGUAGE", "en_US")
 DEVICENAME = os.getenv("DEVICENAME", "PixelWatch3")
 
 # --- InfluxDB 2.x Configuration ---
-# These are loaded from environment variables.
 INFLUXDB_URL = os.getenv("INFLUXDB_URL")
 INFLUXDB_TOKEN = os.getenv("INFLUXDB_TOKEN")
 INFLUXDB_ORG = os.getenv("INFLUXDB_ORG")
 INFLUXDB_BUCKET = os.getenv("INFLUXDB_BUCKET")
 
 # --- Script Behavior ---
-# The script will fetch data for the last 'X' days, including today.
-FETCH_DAYS_RANGE = 1
-
-# Delay in seconds between each API request to prevent rate-limiting.
 REQUEST_DELAY_SECONDS = 2
-
-# Retry logic configuration
 SERVER_ERROR_MAX_RETRY = 3
 EXPIRED_TOKEN_MAX_RETRY = 5
 SKIP_REQUEST_ON_SERVER_ERROR = True
@@ -87,13 +80,75 @@ logging.basicConfig(
 # ## 🌐 API and Database Functions
 # =============================================================================
 
+def safe_float_convert(value, default=0.0):
+    """Safely convert a value to float with error handling."""
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        logging.warning(f"Could not convert '{value}' to float, using default {default}")
+        return default
+
+def safe_datetime_parse(date_string, add_time=True):
+    """Safely parse datetime strings with error handling."""
+    if not date_string or len(date_string) < 8:
+        logging.warning(f"safe_datetime_parse: Input '{date_string}' is not a valid datetime string.")
+        return None
+    try:
+        if add_time and 'T' not in date_string and len(date_string) == 10:
+            date_string += "T00:00:00"
+        
+        # Handle timezone-aware strings
+        if date_string.endswith('Z'):
+            dt = datetime.fromisoformat(date_string.rstrip('Z')).replace(tzinfo=pytz.utc)
+            return dt.isoformat()
+        else:
+            dt = datetime.fromisoformat(date_string)
+            if dt.tzinfo is None:
+                dt = LOCAL_TIMEZONE.localize(dt)
+            return dt.astimezone(pytz.utc).isoformat()
+    except (ValueError, AttributeError) as e:
+        logging.warning(f"Failed to parse datetime '{date_string}': {e}")
+        return None
+
+def create_record_with_unique_key(measurement, time_str, tags, fields):
+    """Create a record with a unique identifier to prevent duplicates."""
+    if not time_str:
+        return None
+    
+    # Create unique identifier based on measurement, time, and tags
+    unique_str = f"{measurement}_{time_str}_{str(sorted(tags.items()))}"
+    record_id = hashlib.md5(unique_str.encode()).hexdigest()[:8]
+    
+    unique_tags = tags.copy()
+    unique_tags['record_id'] = record_id
+    
+    # Ensure all field values are floats
+    safe_fields = {}
+    for key, value in fields.items():
+        if isinstance(value, (int, float)):
+            safe_fields[key] = safe_float_convert(value)
+        elif isinstance(value, str):
+            # Try to convert string numbers to float
+            safe_fields[key] = safe_float_convert(value, default=0.0)
+        else:
+            safe_fields[key] = safe_float_convert(0.0)
+    
+    return {
+        "measurement": measurement,
+        "time": time_str,
+        "tags": unique_tags,
+        "fields": safe_fields
+    }
+
 def request_data_from_fitbit(url, headers={}, params={}, data={}, request_type="get"):
     """Generic function to make requests to the Fitbit API with error handling."""
     global ACCESS_TOKEN, API_REQUEST_COUNT
     retry_attempts = 0
-    
+
     time.sleep(REQUEST_DELAY_SECONDS)
-    
+
     logging.debug(f"Requesting data from Fitbit: {url}")
     while True:
         if request_type == "get" and not headers:
@@ -104,9 +159,9 @@ def request_data_from_fitbit(url, headers={}, params={}, data={}, request_type="
             }
         try:
             if request_type == "get":
-                response = requests.get(url, headers=headers, params=params, data=data)
+                response = requests.get(url, headers=headers, params=params, data=data, timeout=30)
             elif request_type == "post":
-                response = requests.post(url, headers=headers, params=params, data=data)
+                response = requests.post(url, headers=headers, params=params, data=data, timeout=30)
             else:
                 raise Exception(f"Invalid request type: {request_type}")
 
@@ -115,7 +170,7 @@ def request_data_from_fitbit(url, headers={}, params={}, data={}, request_type="
 
             if response.status_code == 200:
                 return response.text if url.endswith(".tcx") else response.json()
-            
+
             elif response.status_code == 401:
                 logging.warning("Access Token expired. Refreshing now...")
                 if retry_attempts >= EXPIRED_TOKEN_MAX_RETRY:
@@ -124,12 +179,12 @@ def request_data_from_fitbit(url, headers={}, params={}, data={}, request_type="
                 headers["Authorization"] = f"Bearer {ACCESS_TOKEN}"
                 retry_attempts += 1
                 time.sleep(10)
-            
+
             elif response.status_code == 429:
                 retry_after = int(response.headers.get("Fitbit-Rate-Limit-Reset", 60)) + 30
                 logging.warning(f"Rate limit reached. Retrying in {retry_after} seconds.")
                 time.sleep(retry_after)
-            
+
             elif response.status_code in [500, 502, 503, 504]:
                 logging.warning(f"Server Error ({response.status_code}). Retrying in 120 seconds...")
                 if retry_attempts >= SERVER_ERROR_MAX_RETRY:
@@ -140,16 +195,26 @@ def request_data_from_fitbit(url, headers={}, params={}, data={}, request_type="
                         raise Exception("Unable to solve server error after multiple retries.")
                 retry_attempts += 1
                 time.sleep(120)
-                
+
             else:
                 logging.error(f"Fitbit API request failed: {response.status_code} {response.text}")
-                response.raise_for_status()
-                return None
+                if retry_attempts >= 3:
+                    return None
+                retry_attempts += 1
+                time.sleep(30)
 
         except ConnectionError as e:
             logging.error(f"Connection error: {e}. Retrying in 5 minutes...")
+            if retry_attempts >= 3:
+                return None
             time.sleep(300)
             retry_attempts += 1
+        except Exception as e:
+            logging.error(f"Unexpected error in API request: {e}")
+            if retry_attempts >= 3:
+                return None
+            retry_attempts += 1
+            time.sleep(30)
 
 
 def refresh_fitbit_tokens(client_id, client_secret):
@@ -169,16 +234,16 @@ def refresh_fitbit_tokens(client_id, client_secret):
         "Content-Type": "application/x-www-form-urlencoded"
     }
     data = {"grant_type": "refresh_token", "refresh_token": refresh_token}
-    
+
     response_data = request_data_from_fitbit(url, headers=headers, data=data, request_type="post")
-    
-    if response_data:
+
+    if response_data and "access_token" in response_data:
         new_access_token = response_data["access_token"]
         new_refresh_token = response_data["refresh_token"]
-        
+
         with open(TOKEN_FILE_PATH, "w") as file:
             json.dump({"access_token": new_access_token, "refresh_token": new_refresh_token}, file)
-            
+
         logging.info("Fitbit token refresh successful!")
         return new_access_token
     else:
@@ -195,6 +260,12 @@ def write_points_to_influxdb(points, client, write_api):
         logging.info(f"Successfully wrote {len(points)} points to InfluxDB.")
     except InfluxDBError as e:
         logging.error(f"Error writing to InfluxDB: {e}")
+        # Log the full error details from the server
+        if e.response:
+            logging.error(f"Reason: {e.response.reason}")
+            logging.error(f"HTTP response headers: {e.response.headers}")
+            logging.error(f"HTTP response body: {e.response.data}")
+        sys.exit("Exiting due to InfluxDB write error.")
 
 
 def get_user_timezone():
@@ -216,14 +287,35 @@ def get_battery_level():
     """Gets the latest battery level from the user's device."""
     devices = request_data_from_fitbit("https://api.fitbit.com/1/user/-/devices.json")
     if devices:
-        device = devices[0]
-        collected_records.append({
-            "measurement": "DeviceBatteryLevel",
-            "time": LOCAL_TIMEZONE.localize(datetime.fromisoformat(device['lastSyncTime'])).astimezone(pytz.utc).isoformat(),
-            "fields": {"value": float(device['batteryLevel'])},
-            "tags": {"Device": DEVICENAME}
-        })
-        logging.info(f"Recorded battery level: {device['batteryLevel']}%")
+        for device in devices:
+            if device.get('deviceVersion') == DEVICENAME or device.get('type') == DEVICENAME:
+                time_str = safe_datetime_parse(device.get('lastSyncTime'))
+                if time_str:
+                    record = create_record_with_unique_key(
+                        "DeviceBatteryLevel",
+                        time_str,
+                        {"Device": DEVICENAME},
+                        {"value": safe_float_convert(device.get('batteryLevel', 0))}
+                    )
+                    if record:
+                        collected_records.append(record)
+                        logging.info(f"Recorded battery level: {device.get('batteryLevel', 0)}%")
+                break
+        else:
+            # If no matching device found, use first device
+            if devices:
+                device = devices[0]
+                time_str = safe_datetime_parse(device.get('lastSyncTime'))
+                if time_str:
+                    record = create_record_with_unique_key(
+                        "DeviceBatteryLevel",
+                        time_str,
+                        {"Device": DEVICENAME},
+                        {"value": safe_float_convert(device.get('batteryLevel', 0))}
+                    )
+                    if record:
+                        collected_records.append(record)
+                        logging.info(f"Recorded battery level: {device.get('batteryLevel', 0)}%")
 
 def get_intraday_data(date_str, measurement_list):
     """Fetches intraday data (e.g., heart rate, steps) for a specific day."""
@@ -233,14 +325,16 @@ def get_intraday_data(date_str, measurement_list):
         if response and f"activities-{measurement}-intraday" in response:
             data = response[f"activities-{measurement}-intraday"]['dataset']
             for value in data:
-                log_time = datetime.fromisoformat(f"{date_str}T{value['time']}")
-                utc_time = LOCAL_TIMEZONE.localize(log_time).astimezone(pytz.utc).isoformat()
-                collected_records.append({
-                    "measurement": measurement_name,
-                    "time": utc_time,
-                    "tags": {"Device": DEVICENAME},
-                    "fields": {"value": int(value['value'])}
-                })
+                log_time = safe_datetime_parse(f"{date_str}T{value['time']}", add_time=False)
+                if log_time:
+                    record = create_record_with_unique_key(
+                        measurement_name,
+                        log_time,
+                        {"Device": DEVICENAME},
+                        {"value": safe_float_convert(value.get('value', 0))}
+                    )
+                    if record:
+                        collected_records.append(record)
             logging.info(f"Recorded {len(data)} points for {measurement_name} on {date_str}")
 
 def get_daily_summaries(start_date_str, end_date_str):
@@ -257,48 +351,99 @@ def get_daily_summaries(start_date_str, end_date_str):
     hrv_data = request_data_from_fitbit(endpoints["HRV"].format(start=start_date_str, end=end_date_str))
     if hrv_data and 'hrv' in hrv_data:
         for item in hrv_data['hrv']:
-            utc_time = LOCAL_TIMEZONE.localize(datetime.fromisoformat(item["dateTime"] + "T00:00:00")).astimezone(pytz.utc).isoformat()
-            
-            # Get the fields and ensure values are floats to preserve precision
-            fields = item["value"]
-            if 'dailyRmssd' in fields:
-                fields['dailyRmssd'] = float(fields['dailyRmssd'])
-            if 'deepRmssd' in fields:
-                fields['deepRmssd'] = float(fields['deepRmssd'])
+            time_str = safe_datetime_parse(item.get("dateTime"))
+            if time_str and "value" in item:
+                # Ensure all numeric values in the 'value' dictionary are floats
+                fields = {}
+                for k, v in item["value"].items():
+                    if isinstance(v, (int, float, str)):
+                        fields[k] = safe_float_convert(v)
                 
-            collected_records.append({"measurement": "HRV", "time": utc_time, "tags": {"Device": DEVICENAME}, "fields": fields})
+                if fields:
+                    record = create_record_with_unique_key(
+                        "HRV", 
+                        time_str, 
+                        {"Device": DEVICENAME}, 
+                        fields
+                    )
+                    if record:
+                        collected_records.append(record)
         logging.info("Recorded HRV summary.")
 
     # Breathing Rate
     br_data = request_data_from_fitbit(endpoints["BreathingRate"].format(start=start_date_str, end=end_date_str))
     if br_data and 'br' in br_data:
         for item in br_data['br']:
-            utc_time = LOCAL_TIMEZONE.localize(datetime.fromisoformat(item["dateTime"] + "T00:00:00")).astimezone(pytz.utc).isoformat()
-            collected_records.append({"measurement": "BreathingRate", "time": utc_time, "tags": {"Device": DEVICENAME}, "fields": {"value": item["value"]["breathingRate"]}})
+            time_str = safe_datetime_parse(item.get("dateTime"))
+            if time_str and "value" in item:
+                breathing_rate = safe_float_convert(item["value"].get("breathingRate", 0))
+                record = create_record_with_unique_key(
+                    "BreathingRate", 
+                    time_str, 
+                    {"Device": DEVICENAME}, 
+                    {"value": breathing_rate}
+                )
+                if record:
+                    collected_records.append(record)
         logging.info("Recorded Breathing Rate summary.")
 
     # Skin Temperature
     skin_temp_data = request_data_from_fitbit(endpoints["SkinTemperature"].format(start=start_date_str, end=end_date_str))
     if skin_temp_data and 'tempSkin' in skin_temp_data:
         for item in skin_temp_data['tempSkin']:
-            utc_time = LOCAL_TIMEZONE.localize(datetime.fromisoformat(item["dateTime"] + "T00:00:00")).astimezone(pytz.utc).isoformat()
-            collected_records.append({"measurement": "SkinTemperature", "time": utc_time, "tags": {"Device": DEVICENAME}, "fields": {"nightlyRelative": item["value"]["nightlyRelative"]}})
+            time_str = safe_datetime_parse(item.get("dateTime"))
+            if time_str and "value" in item:
+                nightly_relative = safe_float_convert(item["value"].get("nightlyRelative", 0))
+                record = create_record_with_unique_key(
+                    "SkinTemperature", 
+                    time_str, 
+                    {"Device": DEVICENAME}, 
+                    {"nightlyRelative": nightly_relative}
+                )
+                if record:
+                    collected_records.append(record)
         logging.info("Recorded Skin Temperature summary.")
     
     # Weight and BMI
     weight_data = request_data_from_fitbit(endpoints["Weight"].format(start=start_date_str, end=end_date_str))
     if weight_data and 'weight' in weight_data:
         for item in weight_data['weight']:
-             utc_time = LOCAL_TIMEZONE.localize(datetime.fromisoformat(f"{item['date']}T{item['time']}")).astimezone(pytz.utc).isoformat()
-             collected_records.append({"measurement": "Weight", "time": utc_time, "tags": {"Source": item['source']}, "fields": {"weight_kg": item['weight'], "bmi": item['bmi']}})
+            time_str = safe_datetime_parse(f"{item.get('date', '')}T{item.get('time', '00:00:00')}", add_time=False)
+            if time_str:
+                record = create_record_with_unique_key(
+                    "Weight", 
+                    time_str, 
+                    {"Source": item.get('source', 'Unknown')}, 
+                    {
+                        "weight_kg": safe_float_convert(item.get('weight', 0)), 
+                        "bmi": safe_float_convert(item.get('bmi', 0))
+                    }
+                )
+                if record:
+                    collected_records.append(record)
         logging.info("Recorded Weight and BMI summary.")
         
     # SPO2 Daily Average
     spo2_daily = request_data_from_fitbit(endpoints["SPO2_Daily"].format(start=start_date_str, end=end_date_str))
     if spo2_daily:
         for item in spo2_daily:
-            utc_time = LOCAL_TIMEZONE.localize(datetime.fromisoformat(item["dateTime"] + "T00:00:00")).astimezone(pytz.utc).isoformat()
-            collected_records.append({"measurement": "SPO2_Daily", "time": utc_time, "tags": {"Device": DEVICENAME}, "fields": item['value']})
+            time_str = safe_datetime_parse(item.get("dateTime"))
+            if time_str and "value" in item:
+                # Ensure all numeric values in the 'value' dictionary are floats
+                fields = {}
+                for k, v in item['value'].items():
+                    if isinstance(v, (int, float, str)):
+                        fields[k] = safe_float_convert(v)
+                
+                if fields:
+                    record = create_record_with_unique_key(
+                        "SPO2_Daily", 
+                        time_str, 
+                        {"Device": DEVICENAME}, 
+                        fields
+                    )
+                    if record:
+                        collected_records.append(record)
         logging.info("Recorded Daily SpO2 summary.")
 
 
@@ -310,8 +455,16 @@ def get_activity_summaries(start_date_str, end_date_str):
         data = request_data_from_fitbit(url)
         if data and f"activities-tracker-{act_type}" in data:
             for item in data[f"activities-tracker-{act_type}"]:
-                utc_time = LOCAL_TIMEZONE.localize(datetime.fromisoformat(item["dateTime"] + "T00:00:00")).astimezone(pytz.utc).isoformat()
-                collected_records.append({"measurement": f"Activity-{act_type}", "time": utc_time, "tags": {"Device": DEVICENAME}, "fields": {"value": float(item['value'])}})
+                time_str = safe_datetime_parse(item.get("dateTime"))
+                if time_str:
+                    record = create_record_with_unique_key(
+                        f"Activity-{act_type}", 
+                        time_str, 
+                        {"Device": DEVICENAME}, 
+                        {"value": safe_float_convert(item.get('value', 0))}
+                    )
+                    if record:
+                        collected_records.append(record)
             logging.info(f"Recorded Activity summary for {act_type}.")
 
     # Heart Rate Zones and Resting Heart Rate
@@ -319,11 +472,34 @@ def get_activity_summaries(start_date_str, end_date_str):
     hr_data = request_data_from_fitbit(url)
     if hr_data and 'activities-heart' in hr_data:
         for item in hr_data['activities-heart']:
-            utc_time = LOCAL_TIMEZONE.localize(datetime.fromisoformat(item["dateTime"] + "T00:00:00")).astimezone(pytz.utc).isoformat()
-            zones = {zone.get('name'): zone.get('minutes', 0) for zone in item['value'].get('heartRateZones', [])}
-            collected_records.append({"measurement": "HR_Zones", "time": utc_time, "tags": {"Device": DEVICENAME}, "fields": zones})
-            if "restingHeartRate" in item['value']:
-                collected_records.append({"measurement": "RestingHR", "time": utc_time, "tags": {"Device": DEVICENAME}, "fields": {"value": item['value']['restingHeartRate']}})
+            time_str = safe_datetime_parse(item.get("dateTime"))
+            if time_str and "value" in item:
+                # Heart Rate Zones
+                zones = {}
+                for zone in item['value'].get('heartRateZones', []):
+                    zone_name = zone.get('name', 'Unknown')
+                    zones[zone_name] = safe_float_convert(zone.get('minutes', 0))
+                
+                if zones:
+                    record = create_record_with_unique_key(
+                        "HR_Zones", 
+                        time_str, 
+                        {"Device": DEVICENAME}, 
+                        zones
+                    )
+                    if record:
+                        collected_records.append(record)
+                
+                # Resting Heart Rate
+                if "restingHeartRate" in item['value']:
+                    record = create_record_with_unique_key(
+                        "RestingHR", 
+                        time_str, 
+                        {"Device": DEVICENAME}, 
+                        {"value": safe_float_convert(item['value']['restingHeartRate'])}
+                    )
+                    if record:
+                        collected_records.append(record)
         logging.info("Recorded Heart Rate Zone and Resting HR summaries.")
 
 def get_sleep_data(start_date_str, end_date_str):
@@ -335,72 +511,100 @@ def get_sleep_data(start_date_str, end_date_str):
         return
 
     sleep_level_map = {'wake': 3, 'rem': 2, 'light': 1, 'deep': 0, 'asleep': 1, 'restless': 2, 'awake': 3}
-    for record in sleep_data['sleep']:
-        utc_time = LOCAL_TIMEZONE.localize(datetime.fromisoformat(record["startTime"])).astimezone(pytz.utc).isoformat()
-        summary_levels = record.get('levels', {}).get('summary', {})
+    for sleep_record in sleep_data['sleep']:
+        time_str = safe_datetime_parse(sleep_record.get("startTime"), add_time=False)
+        if not time_str:
+            continue
+            
+        summary_levels = sleep_record.get('levels', {}).get('summary', {})
         
-        minutes_light = summary_levels.get('light', {}).get('minutes', summary_levels.get('asleep', {}).get('minutes', 0))
-        minutes_rem = summary_levels.get('rem', {}).get('minutes', summary_levels.get('restless', {}).get('minutes', 0))
-        minutes_deep = summary_levels.get('deep', {}).get('minutes', 0)
+        minutes_light = safe_float_convert(
+            summary_levels.get('light', {}).get('minutes', 
+            summary_levels.get('asleep', {}).get('minutes', 0))
+        )
+        minutes_rem = safe_float_convert(
+            summary_levels.get('rem', {}).get('minutes', 
+            summary_levels.get('restless', {}).get('minutes', 0))
+        )
+        minutes_deep = safe_float_convert(summary_levels.get('deep', {}).get('minutes', 0))
 
-        collected_records.append({
-            "measurement": "SleepSummary",
-            "time": utc_time,
-            "tags": {"Device": DEVICENAME, "isMainSleep": record["isMainSleep"]},
-            "fields": {
-                'efficiency': record["efficiency"],
-                'minutesAsleep': record['minutesAsleep'],
-                'minutesInBed': record['timeInBed'],
-                'minutesAwake': record['minutesAwake'],
+        record = create_record_with_unique_key(
+            "SleepSummary",
+            time_str,
+            {"Device": DEVICENAME, "isMainSleep": str(sleep_record.get("isMainSleep", False))},
+            {
+                'efficiency': safe_float_convert(sleep_record.get("efficiency", 0)),
+                'minutesAsleep': safe_float_convert(sleep_record.get('minutesAsleep', 0)),
+                'minutesInBed': safe_float_convert(sleep_record.get('timeInBed', 0)),
+                'minutesAwake': safe_float_convert(sleep_record.get('minutesAwake', 0)),
                 'minutesLight': minutes_light,
                 'minutesREM': minutes_rem,
                 'minutesDeep': minutes_deep,
             }
-        })
+        )
+        if record:
+            collected_records.append(record)
 
-        if 'data' in record.get('levels', {}):
-            for stage in record['levels']['data']:
-                stage_time = LOCAL_TIMEZONE.localize(datetime.fromisoformat(stage["dateTime"])).astimezone(pytz.utc).isoformat()
-                collected_records.append({
-                    "measurement": "SleepLevels",
-                    "time": stage_time,
-                    "tags": {"Device": DEVICENAME, "isMainSleep": record["isMainSleep"]},
-                    "fields": {
-                        'level': sleep_level_map.get(stage["level"], -1),
-                        'duration_seconds': stage["seconds"]
-                    }
-                })
+        # Sleep stages detail
+        if 'data' in sleep_record.get('levels', {}):
+            for stage in sleep_record['levels']['data']:
+                stage_time = safe_datetime_parse(stage.get("dateTime"), add_time=False)
+                if stage_time:
+                    record = create_record_with_unique_key(
+                        "SleepLevels",
+                        stage_time,
+                        {"Device": DEVICENAME, "isMainSleep": str(sleep_record.get("isMainSleep", False))},
+                        {
+                            'level': safe_float_convert(sleep_level_map.get(stage.get("level"), -1)),
+                            'duration_seconds': safe_float_convert(stage.get("seconds", 0))
+                        }
+                    )
+                    if record:
+                        collected_records.append(record)
     logging.info(f"Recorded {len(sleep_data['sleep'])} sleep logs.")
 
-def fetch_latest_activities(end_date_str):
-    """Fetches the 50 most recent activities and their GPS data if available."""
-    next_day = (datetime.strptime(end_date_str, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
-    url = f"https://api.fitbit.com/1/user/-/activities/list.json?beforeDate={next_day}&sort=desc&limit=50&offset=0"
-    activities_data = request_data_from_fitbit(url)
-    if not (activities_data and 'activities' in activities_data):
-        logging.warning("Could not fetch recent activities.")
-        return
-        
-    logging.info(f"Fetched {len(activities_data['activities'])} recent activity logs.")
-    tcx_fetch_limit = 10
+def fetch_activities_for_date(target_date_str):
+    """Fetches activities specifically for the target date only."""
+    # First try to get activities for the specific date
+    url = f"https://api.fitbit.com/1/user/-/activities/date/{target_date_str}.json"
+    daily_activities = request_data_from_fitbit(url)
+    
+    activities_found = 0
     tcx_fetched_count = 0
+    tcx_fetch_limit = 5  # Reduced limit for daily runs
+    
+    if daily_activities and 'activities' in daily_activities:
+        for activity in daily_activities['activities']:
+            activities_found += 1
+            
+            # Convert all numeric fields to floats, excluding ID fields
+            fields = {}
+            for k, v in activity.items():
+                if isinstance(v, (int, float)) and k not in ['logId', 'activityTypeId']:
+                    fields[k] = safe_float_convert(v)
+            
+            time_str = safe_datetime_parse(activity.get('startTime'), add_time=False)
+            if time_str and fields:
+                activity_id = f"{time_str}-{activity.get('activityName', 'Unknown')}"
+                
+                record = create_record_with_unique_key(
+                    "ActivityRecords",
+                    time_str,
+                    {"ActivityName": activity.get('activityName', 'Unknown')},
+                    fields
+                )
+                if record:
+                    collected_records.append(record)
 
-    for activity in activities_data['activities']:
-        fields = {k: v for k, v in activity.items() if isinstance(v, (int, float)) and k not in ['logId', 'activityTypeId']}
-        utc_time = datetime.fromisoformat(activity['startTime'].strip("Z")).replace(tzinfo=pytz.utc).isoformat()
-        activity_id = f"{utc_time}-{activity['activityName']}"
-        
-        collected_records.append({
-            "measurement": "ActivityRecords",
-            "time": utc_time,
-            "tags": {"ActivityName": activity['activityName']},
-            "fields": fields
-        })
-
-        if activity.get("hasGps") and activity.get("tcxLink") and tcx_fetched_count < tcx_fetch_limit:
-            logging.info(f"Found GPS data for activity: {activity['activityName']}. Attempting to fetch.")
-            get_tcx_data(activity["tcxLink"], activity_id)
-            tcx_fetched_count += 1
+                # Fetch GPS data if available and within limit
+                if (activity.get("hasGps") and 
+                    activity.get("tcxLink") and 
+                    tcx_fetched_count < tcx_fetch_limit):
+                    logging.info(f"Found GPS data for activity: {activity.get('activityName')}. Attempting to fetch.")
+                    get_tcx_data(activity["tcxLink"], activity_id)
+                    tcx_fetched_count += 1
+    
+    logging.info(f"Recorded {activities_found} activities for {target_date_str}")
 
 def get_tcx_data(tcx_url, activity_id):
     """Parses a TCX file for GPS trackpoints."""
@@ -410,32 +614,54 @@ def get_tcx_data(tcx_url, activity_id):
         logging.error(f"Failed to fetch TCX data for {activity_id}")
         return
 
-    root = ET.fromstring(response_text)
-    namespace = {"ns": "http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2"}
-    trackpoints = root.findall(".//ns:Trackpoint", namespace)
-    
-    for trkpt in trackpoints:
-        time_elem = trkpt.find("ns:Time", namespace)
-        lat_elem = trkpt.find(".//ns:LatitudeDegrees", namespace)
-        lon_elem = trkpt.find(".//ns:LongitudeDegrees", namespace)
+    try:
+        root = ET.fromstring(response_text)
+        namespace = {"ns": "http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2"}
+        trackpoints = root.findall(".//ns:Trackpoint", namespace)
         
-        if time_elem is not None and lat_elem is not None and lon_elem is not None:
-            utc_time = datetime.fromisoformat(time_elem.text.strip("Z")).replace(tzinfo=pytz.utc).isoformat()
-            fields = {
-                "lat": float(lat_elem.text),
-                "lon": float(lon_elem.text),
-                "altitude": float(alt.text) if (alt := trkpt.find("ns:AltitudeMeters", namespace)) is not None else None,
-                "distance": float(dist.text) if (dist := trkpt.find("ns:DistanceMeters", namespace)) is not None else None,
-                "heart_rate": int(hr.text) if (hr := trkpt.find(".//ns:HeartRateBpm/ns:Value", namespace)) is not None else None,
-            }
-            fields = {k: v for k, v in fields.items() if v is not None}
-            collected_records.append({
-                "measurement": "GPS",
-                "tags": {"ActivityID": activity_id},
-                "time": utc_time,
-                "fields": fields
-            })
-    logging.info(f"Recorded {len(trackpoints)} GPS points for {activity_id}")
+        points_added = 0
+        for trkpt in trackpoints:
+            time_elem = trkpt.find("ns:Time", namespace)
+            lat_elem = trkpt.find(".//ns:LatitudeDegrees", namespace)
+            lon_elem = trkpt.find(".//ns:LongitudeDegrees", namespace)
+            
+            if time_elem is not None and lat_elem is not None and lon_elem is not None:
+                time_str = safe_datetime_parse(time_elem.text, add_time=False)
+                if time_str:
+                    # Ensure all GPS fields are floats
+                    fields = {
+                        "lat": safe_float_convert(lat_elem.text),
+                        "lon": safe_float_convert(lon_elem.text),
+                    }
+                    
+                    # Optional fields
+                    alt_elem = trkpt.find("ns:AltitudeMeters", namespace)
+                    if alt_elem is not None:
+                        fields["altitude"] = safe_float_convert(alt_elem.text)
+                    
+                    dist_elem = trkpt.find("ns:DistanceMeters", namespace)
+                    if dist_elem is not None:
+                        fields["distance"] = safe_float_convert(dist_elem.text)
+                    
+                    hr_elem = trkpt.find(".//ns:HeartRateBpm/ns:Value", namespace)
+                    if hr_elem is not None:
+                        fields["heart_rate"] = safe_float_convert(hr_elem.text)
+                    
+                    record = create_record_with_unique_key(
+                        "GPS",
+                        time_str,
+                        {"ActivityID": activity_id},
+                        fields
+                    )
+                    if record:
+                        collected_records.append(record)
+                        points_added += 1
+        
+        logging.info(f"Recorded {points_added} GPS points for {activity_id}")
+    except ET.ParseError as e:
+        logging.error(f"Failed to parse TCX XML for {activity_id}: {e}")
+    except Exception as e:
+        logging.error(f"Unexpected error processing TCX data for {activity_id}: {e}")
 
 # =============================================================================
 # ## 🚀 Main Execution
@@ -447,14 +673,12 @@ def main():
     
     logging.info("--- Starting Fitbit data sync script ---")
 
-    # AMENDMENT: Validate that all required environment variables are set.
     required_vars = ['CLIENT_ID', 'CLIENT_SECRET', 'INFLUXDB_URL', 'INFLUXDB_TOKEN', 'INFLUXDB_ORG', 'INFLUXDB_BUCKET']
     missing_vars = [var for var in required_vars if not globals().get(var)]
     if missing_vars:
         logging.error(f"Fatal: The following required environment variables are not set: {', '.join(missing_vars)}")
         sys.exit(1)
 
-    # 1. Initialize InfluxDB Client
     try:
         influx_client = InfluxDBClient(url=INFLUXDB_URL, token=INFLUXDB_TOKEN, org=INFLUXDB_ORG)
         influx_write_api = influx_client.write_api(write_options=SYNCHRONOUS)
@@ -463,61 +687,56 @@ def main():
         logging.error(f"Fatal: Could not connect to InfluxDB. Aborting. Error: {e}")
         sys.exit(1)
 
-    # 2. Refresh Fitbit Token and get Timezone
-    ACCESS_TOKEN = refresh_fitbit_tokens(CLIENT_ID, CLIENT_SECRET)
-    LOCAL_TIMEZONE = get_user_timezone()
-
-    # 3. Define Date Range for Fetching Data
-    end_date = datetime.now(LOCAL_TIMEZONE)
-    start_date = end_date - timedelta(days=FETCH_DAYS_RANGE)
-    end_date_str = end_date.strftime("%Y-%m-%d")
-    start_date_str = start_date.strftime("%Y-%m-%d")
-    date_list = [(start_date + timedelta(days=i)).strftime("%Y-%m-%d") for i in range((end_date - start_date).days + 1)]
-    
-    logging.info(f"Fetching data from {start_date_str} to {end_date_str}.")
-
-    # 4. Fetch All Data Sequentially
-    logging.info("--- Fetching intraday data ---")
-    for date_str in date_list:
-        get_intraday_data(date_str, [
-            ('heart', 'HeartRate_Intraday', '1sec'),
-            ('steps', 'Steps_Intraday', '1min')
-        ])
-    
-    logging.info("--- Fetching daily and summary data ---")
-    get_daily_summaries(start_date_str, end_date_str)
-    get_activity_summaries(start_date_str, end_date_str)
-    get_sleep_data(start_date_str, end_date_str)
-    get_battery_level()
-    fetch_latest_activities(end_date_str)
-
-    # 5. Save a local backup of collected records
-    logging.info("Saving local backup of collected records...")
-    if not os.path.exists("data"):
-        os.makedirs("data")
-    backup_path = os.path.join("data", "fitbit_backup.json")
     try:
-        with open(backup_path, 'w') as f:
-            json.dump(collected_records, f, indent=4)
-        logging.info(f"Local backup saved to {backup_path}")
+        ACCESS_TOKEN = refresh_fitbit_tokens(CLIENT_ID, CLIENT_SECRET)
+        LOCAL_TIMEZONE = get_user_timezone()
+
+        # Recommended: run after midnight for the previous day
+        target_date = datetime.now(LOCAL_TIMEZONE) - timedelta(days=1)
+        date_str = target_date.strftime("%Y-%m-%d")
+
+        start_date_str = date_str
+        end_date_str = date_str
+        date_list = [date_str]
+        
+        logging.info(f"Fetching data for date: {date_str} (timezone: {LOCAL_TIMEZONE})")
+
+        logging.info("--- Fetching intraday data ---")
+        for date_str_item in date_list:
+            get_intraday_data(date_str_item, [
+                ('heart', 'HeartRate_Intraday', '1sec'),
+                ('steps', 'Steps_Intraday', '1min')
+            ])
+        
+        logging.info("--- Fetching daily and summary data ---")
+        get_daily_summaries(start_date_str, end_date_str)
+        get_activity_summaries(start_date_str, end_date_str)
+        get_sleep_data(start_date_str, end_date_str)
+        get_battery_level()
+        
+        logging.info("--- Fetching activities for target date ---")
+        fetch_activities_for_date(end_date_str)
+
+        # Filter out any None records before writing
+        valid_records = [record for record in collected_records if record is not None]
+        
+        if valid_records:
+            write_points_to_influxdb(valid_records, influx_client, influx_write_api)
+        else:
+            logging.warning("No valid records collected to write to InfluxDB.")
+
+        logging.info(f"--- Script finished successfully. Total API requests made: {API_REQUEST_COUNT}, Records collected: {len(valid_records)} ---")
+
     except Exception as e:
-        logging.error(f"Failed to save local backup: {e}")
-    if collected_records:
-        # Create a timestamped filename
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        backup_filename = os.path.join("data", f"fitbit_backup_{timestamp}.json")
-
-        try:
-            with open(backup_filename, 'w') as f:
-                json.dump(collected_records, f, indent=4)
-            logging.info(f"Successfully saved local backup to {backup_filename}")
-        except Exception as e:
-            logging.error(f"Failed to save local backup: {e}")
-
-    # 6. Write All Collected Data to InfluxDB
-    write_points_to_influxdb(collected_records, influx_client, influx_write_api)
-
-    logging.info(f"--- Script finished successfully. Total API requests made: {API_REQUEST_COUNT} ---")
+        logging.error(f"Fatal error in main execution: {e}")
+        sys.exit(1)
+    finally:
+        # Clean up
+        if 'influx_client' in locals():
+            try:
+                influx_client.close()
+            except:
+                pass
 
 if __name__ == "__main__":
     main()
