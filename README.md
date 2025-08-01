@@ -12,6 +12,46 @@ All automated via a cron job that runs twice daily. It’s your personal observa
 
 ---
 
+## InfluxBD
+
+influx bucket list
+
+List Measurements
+
+```bash
+influx query 'import "influxdata/influxdb/schema"
+  schema.measurements(bucket: "cromwell-fitbit-2")'
+```
+
+ List Tag Keys
+Tags are key-value pairs that store metadata and are indexed for fast querying. To see all the tag keys for a specific measurement:
+
+```bash
+influx query 'import "influxdata/influxdb/schema"
+schema.measurementTagKeys(
+bucket: "cromwell-fitbit-2",
+measurement: "HRV"
+)'
+```
+
+List Field Keys
+Fields are the key-value pairs that store your actual time series data (e.g., temperature, pressure). Unlike tags, fields are not indexed. To see the field keys for a measurement:
+
+```bash
+influx query 'import "influxdata/influxdb/schema"
+  schema.measurementFieldKeys(
+    bucket: "cromwell-fitbit-2",
+    measurement: "HRV"
+  )'
+```
+
+List Series
+A series is a unique combination of measurement, tag set, and field key. To see all series in a bucket:
+
+```bash
+influx query 'from(bucket: "cromwell-fitbit-2") |> range(start: -1d) |> filter(fn: (r) => r._measurement == "HeartRate_Intraday") |> sort(columns: ["_time"]) |> limit(n: 200)'
+```
+
 ## 📦 Project Overview
 
 `fitbit2influx.py` is a Python script that:

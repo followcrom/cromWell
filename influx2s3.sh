@@ -18,15 +18,15 @@ TIME_RANGE="-1d"
 echo "📦 Starting InfluxDB backup to S3 for time range: $TIME_RANGE"
 
 # Execute Influx query and upload csv to S3
-# influx query "from(bucket: \"cromwell-fitbit\") |> range(start: $TIME_RANGE)" \
+# influx query "from(bucket: \"cromwell-fitbit-2\") |> range(start: $TIME_RANGE)" \
 #   | aws s3 cp - "$S3_PATH" --content-type text/csv
-
+  
 # Execute Influx query and upload json to S3
 # influx query "from(bucket: \"cromwell-fitbit\") |> range(start: $TIME_RANGE)" \
 #   | aws s3 cp - "$S3_PATH" --content-type application/json
 
 # Compress the output and upload to S3
-influx query "from(bucket: \"cromwell-fitbit\") |> range(start: $TIME_RANGE)" \
+influx query "from(bucket: \"cromwell-fitbit-2\") |> range(start: $TIME_RANGE)" \
   | gzip \
   | aws s3 cp - "${S3_PATH}.gz" --content-encoding gzip --content-type application/json
 
