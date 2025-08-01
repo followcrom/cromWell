@@ -52,4 +52,14 @@ $PYTHON_OUTPUT"
 fi
 
 echo "[INFO] Script completed successfully."
+
+SUCCESS_REPORT="Timestamp: $(date)
+Hostname: $(hostname)
+Status: ✅ Fitbit2Influx Job Succeeded
+--------------------------------------------------
+The fitbit2influx.py script ran successfully.
+--------------------------------------------------
+"
+echo "$SUCCESS_REPORT" | mail -s "✅ Fitbit2Influx Job Succeeded" "$EMAIL"
+
 exit 0
