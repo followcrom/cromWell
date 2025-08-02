@@ -12,6 +12,13 @@ All automated via a cron job that runs twice daily. It’s your personal observa
 
 ---
 
+Just activate the venv and run jupyter lab:
+
+```bash
+source cw_venv/bin/activate
+jupyter lab
+```
+
 ## InfluxBD
 
 influx bucket list

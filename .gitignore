@@ -16,3 +16,9 @@ delete/
 
 # Tokens
 tokens.json
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Jupyter Notebooks
+*.ipynb

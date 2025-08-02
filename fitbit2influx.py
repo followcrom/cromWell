@@ -57,7 +57,7 @@ SKIP_REQUEST_ON_SERVER_ERROR = True
 
 # --- Global Variables (do not change) ---
 ACCESS_TOKEN = ""
-LOCAL_TIMEZONE = None
+LOCAL_TIMEZONE = pytz.timezone("Europe/London")
 collected_records = []
 API_REQUEST_COUNT = 0
 
@@ -121,9 +121,6 @@ def create_record_with_unique_key(measurement, time_str, tags, fields):
     unique_str = f"{measurement}_{time_str}_{str(sorted(tags.items()))}"
     record_id = hashlib.md5(unique_str.encode()).hexdigest()[:8]
     
-    unique_tags = tags.copy()
-    unique_tags['record_id'] = record_id
-    
     # Ensure all field values are floats
     safe_fields = {}
     for key, value in fields.items():
@@ -134,11 +131,14 @@ def create_record_with_unique_key(measurement, time_str, tags, fields):
             safe_fields[key] = safe_float_convert(value, default=0.0)
         else:
             safe_fields[key] = safe_float_convert(0.0)
+
+    # Add the unique ID to the fields dictionary instead of the tags.
+    safe_fields['record_id'] = record_id
     
     return {
         "measurement": measurement,
         "time": time_str,
-        "tags": unique_tags,
+        "tags": tags,
         "fields": safe_fields
     }
 
@@ -565,46 +565,74 @@ def get_sleep_data(start_date_str, end_date_str):
 
 def fetch_activities_for_date(target_date_str):
     """Fetches activities specifically for the target date only."""
-    # First try to get activities for the specific date
     url = f"https://api.fitbit.com/1/user/-/activities/date/{target_date_str}.json"
     daily_activities = request_data_from_fitbit(url)
     
     activities_found = 0
     tcx_fetched_count = 0
-    tcx_fetch_limit = 5  # Reduced limit for daily runs
+    tcx_fetch_limit = 5
     
     if daily_activities and 'activities' in daily_activities:
         for activity in daily_activities['activities']:
             activities_found += 1
-            
-            # Convert all numeric fields to floats, excluding ID fields
+
+            start_time_str = activity.get('startTime')
+            activity_name = activity.get('activityName') or 'Unknown'
+
+            # --- This block now has the corrected timestamp ---
+            if not start_time_str:
+                logging.warning(
+                    f"Activity with no startTime: logId={activity.get('logId')}, "
+                    f"name={activity_name}, full activity: {activity}"
+                )
+                # Use the beginning of the target date as the placeholder time
+                placeholder_time = f"{target_date_str}T00:00:00Z"
+                
+                record = create_record_with_unique_key(
+                    "ActivityRecords",
+                    placeholder_time, # Use a valid timestamp
+                    {"ActivityName": activity_name, "MissingStartTime": "True"},
+                    # This logic to grab all primitives is a good way to dump raw data for inspection
+                    {k: v for k, v in activity.items() if isinstance(v, (int, float, str))}
+                )
+                if record:
+                    collected_records.append(record)
+                continue 
+            # ---------------------------------------------------
+
             fields = {}
             for k, v in activity.items():
                 if isinstance(v, (int, float)) and k not in ['logId', 'activityTypeId']:
                     fields[k] = safe_float_convert(v)
             
-            time_str = safe_datetime_parse(activity.get('startTime'), add_time=False)
-            if time_str and fields:
-                activity_id = f"{time_str}-{activity.get('activityName', 'Unknown')}"
+            fields['activityLogged'] = 1.0
+
+            if ':' in start_time_str and len(start_time_str) <= 5:
+                full_datetime_str = f"{target_date_str}T{start_time_str}:00"
+            else:
+                full_datetime_str = start_time_str
+            
+            time_str = safe_datetime_parse(full_datetime_str, add_time=False)
+            
+            if time_str:
+                activity_id = f"{time_str}-{activity_name}"
                 
                 record = create_record_with_unique_key(
                     "ActivityRecords",
                     time_str,
-                    {"ActivityName": activity.get('activityName', 'Unknown')},
+                    {"ActivityName": activity_name},
                     fields
                 )
                 if record:
                     collected_records.append(record)
 
-                # Fetch GPS data if available and within limit
                 if (activity.get("hasGps") and 
                     activity.get("tcxLink") and 
                     tcx_fetched_count < tcx_fetch_limit):
-                    logging.info(f"Found GPS data for activity: {activity.get('activityName')}. Attempting to fetch.")
                     get_tcx_data(activity["tcxLink"], activity_id)
                     tcx_fetched_count += 1
     
-    logging.info(f"Recorded {activities_found} activities for {target_date_str}")
+    logging.info(f"Processed {activities_found} activities for {target_date_str}")
 
 def get_tcx_data(tcx_url, activity_id):
     """Parses a TCX file for GPS trackpoints."""
