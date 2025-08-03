@@ -1,62 +1,19 @@
 # 🏃‍♂️ CromWell 🍋🥝🍌🍐🥥🍈
 
-Pull Fitbit health data into InfluxDB and visualize it with Grafana – effortlessly, reliably, and twice a day!
+Pull Fitbit health data into InfluxDB and visualize it with Grafana. All automated via a cron job that runs once a day. It’s your personal observability pipeline! 🚀
 
-All automated via a cron job that runs twice daily. It’s your personal observability pipeline! 🚀
+##  🖼️ Grafana Visualization
 
-##  🖼️ See it in action
+📊 [Dashboard](https://followcrom.grafana.net/d/97b9809e-408a-4f96-8f92-333e7167d952/cromwell-s-fitbit-board)
 
-📊 [Dashboard](https://followcrom.com/cromwell)
 
-👉 [On followCrom](https://followcrom.com/cromwell)
-
----
+## 🛠️ Local EDA
 
 Just activate the venv and run jupyter lab:
 
 ```bash
 source cw_venv/bin/activate
 jupyter lab
-```
-
-## InfluxBD
-
-influx bucket list
-
-List Measurements
-
-```bash
-influx query 'import "influxdata/influxdb/schema"
-  schema.measurements(bucket: "cromwell-fitbit-2")'
-```
-
- List Tag Keys
-Tags are key-value pairs that store metadata and are indexed for fast querying. To see all the tag keys for a specific measurement:
-
-```bash
-influx query 'import "influxdata/influxdb/schema"
-schema.measurementTagKeys(
-bucket: "cromwell-fitbit-2",
-measurement: "HRV"
-)'
-```
-
-List Field Keys
-Fields are the key-value pairs that store your actual time series data (e.g., temperature, pressure). Unlike tags, fields are not indexed. To see the field keys for a measurement:
-
-```bash
-influx query 'import "influxdata/influxdb/schema"
-  schema.measurementFieldKeys(
-    bucket: "cromwell-fitbit-2",
-    measurement: "HRV"
-  )'
-```
-
-List Series
-A series is a unique combination of measurement, tag set, and field key. To see all series in a bucket:
-
-```bash
-influx query 'from(bucket: "cromwell-fitbit-2") |> range(start: -1d) |> filter(fn: (r) => r._measurement == "HeartRate_Intraday") |> sort(columns: ["_time"]) |> limit(n: 200)'
 ```
 
 ## 📦 Project Overview
@@ -91,9 +48,6 @@ Make sure you've registered an app on the Fitbit developer portal and have:
 
 These should be stored securely in a .env file or secure vault, loaded by the script.
 
-
-
-
 ## 📁 Project Structure
 
 ```
@@ -108,6 +62,48 @@ cromwell/
 ├── .env                    # Environment variables for configuration
 ├── .gitignore              # Git ignore file
 └── README.md
+```
+
+## InfluxDB
+
+```bash
+influx bucket list
+```
+
+List Measurements:
+
+```bash
+influx query 'import "influxdata/influxdb/schema"
+  schema.measurements(bucket: "cromwell-fitbit-2")'
+```
+
+List Tag Keys:
+Tags are key-value pairs that store metadata and are indexed for fast querying. To see all the tag keys for a specific measurement:
+
+```bash
+influx query 'import "influxdata/influxdb/schema"
+schema.measurementTagKeys(
+bucket: "cromwell-fitbit-2",
+measurement: "HRV"
+)'
+```
+
+List Field Keys:
+Fields are the key-value pairs that store your actual time series data (e.g., temperature, pressure). Unlike tags, fields are not indexed. To see the field keys for a measurement:
+
+```bash
+influx query 'import "influxdata/influxdb/schema"
+  schema.measurementFieldKeys(
+    bucket: "cromwell-fitbit-2",
+    measurement: "HRV"
+  )'
+```
+
+List Series:
+A series is a unique combination of measurement, tag set, and field key. To see all series in a bucket:
+
+```bash
+influx query 'from(bucket: "cromwell-fitbit-2") |> range(start: -1d) |> filter(fn: (r) => r._measurement == "HeartRate_Intraday") |> sort(columns: ["_time"]) |> limit(n: 200)'
 ```
 
 ---

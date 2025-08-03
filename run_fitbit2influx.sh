@@ -4,8 +4,8 @@
 SCRIPT_DIR="/var/www/cromwell"
 VENV_DIR="$SCRIPT_DIR/cw_venv"
 ERROR_LOG_FILE="$SCRIPT_DIR/cromwell_error.log"
-EMAIL="followcrom@gmail.com"
-# EMAIL="hello@followcrom.com"
+# EMAIL="followcrom@gmail.com"
+EMAIL="hello@followcrom.com"
 
 # === FUNCTION TO HANDLE FAILURES ===
 handle_failure() {
@@ -13,7 +13,11 @@ handle_failure() {
     local timestamp
     timestamp=$(date)
 
-    local full_report="Timestamp: $timestamp
+    local full_report="❌ Fitbit2Influx Job Failed ❌
+--------------------------------------------------
+This is an automated report from the Fitbit2Influx job script.
+--------------------------------------------------
+Error occurred at: $timestamp
 Hostname: $(hostname)
 Error:
 --------------------------------------------------
@@ -21,7 +25,7 @@ $error_message
 --------------------------------------------------
 "
     echo "$full_report" > "$ERROR_LOG_FILE"
-    echo "$full_report" | mail -s "❌ Fitbit2Influx Job Failed" "$EMAIL"
+    echo "$full_report" | mail -s "Fitbit2Influx Job Failed" "$EMAIL"
     echo "[ERROR] $error_message"
     exit 1
 }
@@ -57,9 +61,9 @@ SUCCESS_REPORT="Timestamp: $(date)
 Hostname: $(hostname)
 Status: ✅ Fitbit2Influx Job Succeeded
 --------------------------------------------------
-The fitbit2influx.py script ran successfully.
+✅ The fitbit2influx.py script ran successfully.
 --------------------------------------------------
 "
-echo "$SUCCESS_REPORT" | mail -s "✅ Fitbit2Influx Job Succeeded" "$EMAIL"
+echo "$SUCCESS_REPORT" | mail -s "Fitbit2Influx Job Succeeded" "$EMAIL"
 
 exit 0

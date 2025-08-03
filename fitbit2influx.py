@@ -121,6 +121,9 @@ def create_record_with_unique_key(measurement, time_str, tags, fields):
     unique_str = f"{measurement}_{time_str}_{str(sorted(tags.items()))}"
     record_id = hashlib.md5(unique_str.encode()).hexdigest()[:8]
     
+    unique_tags = tags.copy()
+    unique_tags['record_id'] = record_id
+    
     # Ensure all field values are floats
     safe_fields = {}
     for key, value in fields.items():
@@ -131,14 +134,11 @@ def create_record_with_unique_key(measurement, time_str, tags, fields):
             safe_fields[key] = safe_float_convert(value, default=0.0)
         else:
             safe_fields[key] = safe_float_convert(0.0)
-
-    # Add the unique ID to the fields dictionary instead of the tags.
-    safe_fields['record_id'] = record_id
     
     return {
         "measurement": measurement,
         "time": time_str,
-        "tags": tags,
+        "tags": unique_tags,
         "fields": safe_fields
     }
 
