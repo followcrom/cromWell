@@ -640,7 +640,7 @@ def main():
     """Main function to orchestrate the data fetching and writing process."""
     global ACCESS_TOKEN, LOCAL_TIMEZONE, collected_records
     
-    logging.info("\n--- Starting Fitbit data sync script ---")
+    logging.info("--- Starting Fitbit data sync script ---")
 
     required_vars = ['CLIENT_ID', 'CLIENT_SECRET', 'INFLUXDB_URL', 'INFLUXDB_TOKEN', 'INFLUXDB_ORG', 'INFLUXDB_BUCKET']
     missing_vars = [var for var in required_vars if not globals().get(var)]
@@ -664,7 +664,7 @@ def main():
         # For example, to fetch data from 5 days ago:
         # target_date = datetime.now(LOCAL_TIMEZONE) - timedelta(days=5)
         # To fetch data for a specific date, you can set it directly:
-        # target_date = datetime(2023, 10, 1, tzinfo=LOCAL_TIMEZONE)
+        # target_date = datetime(2025, 7, 18, tzinfo=LOCAL_TIMEZONE)
         target_date = datetime.now(LOCAL_TIMEZONE) - timedelta(days=1)
         date_str = target_date.strftime("%Y-%m-%d")
 
@@ -702,7 +702,7 @@ def main():
         else:
             logging.warning("No valid records collected to write to InfluxDB.")
 
-        logging.info(f"--- Script finished successfully. Total API requests made: {API_REQUEST_COUNT}, Records collected: {len(valid_records)} ---")
+        logging.info(f"--- Script finished successfully. Total API requests made: {API_REQUEST_COUNT}, Records collected: {len(valid_records)} ---\n")
 
     except Exception as e:
         logging.error(f"Fatal error in main execution: {e}")
