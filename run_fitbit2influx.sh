@@ -16,10 +16,9 @@ handle_failure() {
     local full_report="❌ Fitbit2Influx Job Failed ❌
 --------------------------------------------------
 This is an automated report from the Fitbit2Influx job script.
---------------------------------------------------
 Error occurred at: $timestamp
 Hostname: $(hostname)
-Error:
+Sent to: $EMAIL
 --------------------------------------------------
 $error_message
 --------------------------------------------------
@@ -60,6 +59,7 @@ echo "[INFO] Script completed successfully."
 SUCCESS_REPORT="Timestamp: $(date)
 Hostname: $(hostname)
 Status: ✅ Fitbit2Influx Job Succeeded
+Sent to: $EMAIL
 --------------------------------------------------
 ✅ The fitbit2influx.py script ran successfully.
 --------------------------------------------------

@@ -6,6 +6,7 @@ set -o pipefail
 
 S3_BUCKET="s3://followcrom/cromwell"
 FILENAME="cromwell_data-$(date +%Y-%m-%d).json"
+FILENAME="${FILENAME%.json}.gz"  # Compress the JSON file
 # FILENAME="cromwell_data-$(date +%Y-%m-%d).csv"
 S3_PATH="$S3_BUCKET/$FILENAME"
 

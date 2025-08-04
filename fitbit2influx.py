@@ -15,7 +15,6 @@ import pytz
 import logging
 import os
 import sys
-import hashlib
 from requests.exceptions import ConnectionError
 from datetime import datetime, timedelta
 from influxdb_client import InfluxDBClient
@@ -34,7 +33,7 @@ load_dotenv()
 # --- Logging Configuration ---
 FITBIT_LOG_FILE_PATH = os.environ.get("FITBIT_LOG_FILE_PATH")
 # OVERWRITE_LOG_FILE: Set to True to clear the log file on each run / Set to False to append to the log file
-OVERWRITE_LOG_FILE = True
+OVERWRITE_LOG_FILE = False
 
 # --- Fitbit API Configuration ---
 CLIENT_ID = os.getenv("CLIENT_ID")
@@ -57,7 +56,7 @@ SKIP_REQUEST_ON_SERVER_ERROR = True
 
 # --- Global Variables (do not change) ---
 ACCESS_TOKEN = ""
-LOCAL_TIMEZONE = pytz.timezone("Europe/London")
+LOCAL_TIMEZONE = None
 collected_records = []
 API_REQUEST_COUNT = 0
 
@@ -90,14 +89,24 @@ def safe_float_convert(value, default=0.0):
         logging.warning(f"Could not convert '{value}' to float, using default {default}")
         return default
 
-def safe_datetime_parse(date_string, add_time=True):
+def safe_datetime_parse(date_string, add_time=True, daily_measurement=False):
     """Safely parse datetime strings with error handling."""
     if not date_string or len(date_string) < 8:
         logging.warning(f"safe_datetime_parse: Input '{date_string}' is not a valid datetime string.")
         return None
     try:
+        # For daily measurements, keep as date at noon in local timezone to avoid timezone shifting issues
+        if daily_measurement and len(date_string) == 10:  # YYYY-MM-DD format
+            dt = datetime.strptime(date_string, "%Y-%m-%d").replace(hour=12, minute=0, second=0)
+            dt = LOCAL_TIMEZONE.localize(dt)
+            return dt.astimezone(pytz.utc).isoformat()
+        
+        # Defensive programming: if we encounter an unexpected date-only string, treat it like a daily measurement
         if add_time and 'T' not in date_string and len(date_string) == 10:
-            date_string += "T00:00:00"
+            logging.warning(f"Unexpected date-only string '{date_string}' - treating as daily measurement to avoid timezone issues")
+            dt = datetime.strptime(date_string, "%Y-%m-%d").replace(hour=12, minute=0, second=0)
+            dt = LOCAL_TIMEZONE.localize(dt)
+            return dt.astimezone(pytz.utc).isoformat()
         
         # Handle timezone-aware strings
         if date_string.endswith('Z'):
@@ -111,36 +120,6 @@ def safe_datetime_parse(date_string, add_time=True):
     except (ValueError, AttributeError) as e:
         logging.warning(f"Failed to parse datetime '{date_string}': {e}")
         return None
-
-def create_record_with_unique_key(measurement, time_str, tags, fields):
-    """Create a record with a unique identifier to prevent duplicates."""
-    if not time_str:
-        return None
-    
-    # Create unique identifier based on measurement, time, and tags
-    unique_str = f"{measurement}_{time_str}_{str(sorted(tags.items()))}"
-    record_id = hashlib.md5(unique_str.encode()).hexdigest()[:8]
-    
-    unique_tags = tags.copy()
-    unique_tags['record_id'] = record_id
-    
-    # Ensure all field values are floats
-    safe_fields = {}
-    for key, value in fields.items():
-        if isinstance(value, (int, float)):
-            safe_fields[key] = safe_float_convert(value)
-        elif isinstance(value, str):
-            # Try to convert string numbers to float
-            safe_fields[key] = safe_float_convert(value, default=0.0)
-        else:
-            safe_fields[key] = safe_float_convert(0.0)
-    
-    return {
-        "measurement": measurement,
-        "time": time_str,
-        "tags": unique_tags,
-        "fields": safe_fields
-    }
 
 def request_data_from_fitbit(url, headers={}, params={}, data={}, request_type="get"):
     """Generic function to make requests to the Fitbit API with error handling."""
@@ -291,15 +270,14 @@ def get_battery_level():
             if device.get('deviceVersion') == DEVICENAME or device.get('type') == DEVICENAME:
                 time_str = safe_datetime_parse(device.get('lastSyncTime'))
                 if time_str:
-                    record = create_record_with_unique_key(
-                        "DeviceBatteryLevel",
-                        time_str,
-                        {"Device": DEVICENAME},
-                        {"value": safe_float_convert(device.get('batteryLevel', 0))}
-                    )
-                    if record:
-                        collected_records.append(record)
-                        logging.info(f"Recorded battery level: {device.get('batteryLevel', 0)}%")
+                    record = {
+                        "measurement": "DeviceBatteryLevel",
+                        "time": time_str,
+                        "tags": {"Device": DEVICENAME},
+                        "fields": {"value": safe_float_convert(device.get('batteryLevel', 0))}
+                    }
+                    collected_records.append(record)
+                    logging.info(f"Recorded battery level: {device.get('batteryLevel', 0)}%")
                 break
         else:
             # If no matching device found, use first device
@@ -307,15 +285,14 @@ def get_battery_level():
                 device = devices[0]
                 time_str = safe_datetime_parse(device.get('lastSyncTime'))
                 if time_str:
-                    record = create_record_with_unique_key(
-                        "DeviceBatteryLevel",
-                        time_str,
-                        {"Device": DEVICENAME},
-                        {"value": safe_float_convert(device.get('batteryLevel', 0))}
-                    )
-                    if record:
-                        collected_records.append(record)
-                        logging.info(f"Recorded battery level: {device.get('batteryLevel', 0)}%")
+                    record = {
+                        "measurement": "DeviceBatteryLevel",
+                        "time": time_str,
+                        "tags": {"Device": DEVICENAME},
+                        "fields": {"value": safe_float_convert(device.get('batteryLevel', 0))}
+                    }
+                    collected_records.append(record)
+                    logging.info(f"Recorded battery level: {device.get('batteryLevel', 0)}%")
 
 def get_intraday_data(date_str, measurement_list):
     """Fetches intraday data (e.g., heart rate, steps) for a specific day."""
@@ -327,14 +304,13 @@ def get_intraday_data(date_str, measurement_list):
             for value in data:
                 log_time = safe_datetime_parse(f"{date_str}T{value['time']}", add_time=False)
                 if log_time:
-                    record = create_record_with_unique_key(
-                        measurement_name,
-                        log_time,
-                        {"Device": DEVICENAME},
-                        {"value": safe_float_convert(value.get('value', 0))}
-                    )
-                    if record:
-                        collected_records.append(record)
+                    record = {
+                        "measurement": measurement_name,
+                        "time": log_time,
+                        "tags": {"Device": DEVICENAME},
+                        "fields": {"value": safe_float_convert(value.get('value', 0))}
+                    }
+                    collected_records.append(record)
             logging.info(f"Recorded {len(data)} points for {measurement_name} on {date_str}")
 
 def get_daily_summaries(start_date_str, end_date_str):
@@ -351,7 +327,7 @@ def get_daily_summaries(start_date_str, end_date_str):
     hrv_data = request_data_from_fitbit(endpoints["HRV"].format(start=start_date_str, end=end_date_str))
     if hrv_data and 'hrv' in hrv_data:
         for item in hrv_data['hrv']:
-            time_str = safe_datetime_parse(item.get("dateTime"))
+            time_str = safe_datetime_parse(item.get("dateTime"), daily_measurement=True)
             if time_str and "value" in item:
                 # Ensure all numeric values in the 'value' dictionary are floats
                 fields = {}
@@ -360,48 +336,45 @@ def get_daily_summaries(start_date_str, end_date_str):
                         fields[k] = safe_float_convert(v)
                 
                 if fields:
-                    record = create_record_with_unique_key(
-                        "HRV", 
-                        time_str, 
-                        {"Device": DEVICENAME}, 
-                        fields
-                    )
-                    if record:
-                        collected_records.append(record)
+                    record = {
+                        "measurement": "HRV",
+                        "time": time_str,
+                        "tags": {"Device": DEVICENAME},
+                        "fields": fields
+                    }
+                    collected_records.append(record)
         logging.info("Recorded HRV summary.")
 
     # Breathing Rate
     br_data = request_data_from_fitbit(endpoints["BreathingRate"].format(start=start_date_str, end=end_date_str))
     if br_data and 'br' in br_data:
         for item in br_data['br']:
-            time_str = safe_datetime_parse(item.get("dateTime"))
+            time_str = safe_datetime_parse(item.get("dateTime"), daily_measurement=True)
             if time_str and "value" in item:
                 breathing_rate = safe_float_convert(item["value"].get("breathingRate", 0))
-                record = create_record_with_unique_key(
-                    "BreathingRate", 
-                    time_str, 
-                    {"Device": DEVICENAME}, 
-                    {"value": breathing_rate}
-                )
-                if record:
-                    collected_records.append(record)
+                record = {
+                    "measurement": "BreathingRate",
+                    "time": time_str,
+                    "tags": {"Device": DEVICENAME},
+                    "fields": {"value": breathing_rate}
+                }
+                collected_records.append(record)
         logging.info("Recorded Breathing Rate summary.")
 
     # Skin Temperature
     skin_temp_data = request_data_from_fitbit(endpoints["SkinTemperature"].format(start=start_date_str, end=end_date_str))
     if skin_temp_data and 'tempSkin' in skin_temp_data:
         for item in skin_temp_data['tempSkin']:
-            time_str = safe_datetime_parse(item.get("dateTime"))
+            time_str = safe_datetime_parse(item.get("dateTime"), daily_measurement=True)
             if time_str and "value" in item:
                 nightly_relative = safe_float_convert(item["value"].get("nightlyRelative", 0))
-                record = create_record_with_unique_key(
-                    "SkinTemperature", 
-                    time_str, 
-                    {"Device": DEVICENAME}, 
-                    {"nightlyRelative": nightly_relative}
-                )
-                if record:
-                    collected_records.append(record)
+                record = {
+                    "measurement": "SkinTemperature",
+                    "time": time_str,
+                    "tags": {"Device": DEVICENAME},
+                    "fields": {"nightlyRelative": nightly_relative}
+                }
+                collected_records.append(record)
         logging.info("Recorded Skin Temperature summary.")
     
     # Weight and BMI
@@ -410,24 +383,23 @@ def get_daily_summaries(start_date_str, end_date_str):
         for item in weight_data['weight']:
             time_str = safe_datetime_parse(f"{item.get('date', '')}T{item.get('time', '00:00:00')}", add_time=False)
             if time_str:
-                record = create_record_with_unique_key(
-                    "Weight", 
-                    time_str, 
-                    {"Source": item.get('source', 'Unknown')}, 
-                    {
-                        "weight_kg": safe_float_convert(item.get('weight', 0)), 
+                record = {
+                    "measurement": "Weight",
+                    "time": time_str,
+                    "tags": {"Source": item.get('source', 'Unknown')},
+                    "fields": {
+                        "weight_kg": safe_float_convert(item.get('weight', 0)),
                         "bmi": safe_float_convert(item.get('bmi', 0))
                     }
-                )
-                if record:
-                    collected_records.append(record)
+                }
+                collected_records.append(record)
         logging.info("Recorded Weight and BMI summary.")
         
     # SPO2 Daily Average
     spo2_daily = request_data_from_fitbit(endpoints["SPO2_Daily"].format(start=start_date_str, end=end_date_str))
     if spo2_daily:
         for item in spo2_daily:
-            time_str = safe_datetime_parse(item.get("dateTime"))
+            time_str = safe_datetime_parse(item.get("dateTime"), daily_measurement=True)
             if time_str and "value" in item:
                 # Ensure all numeric values in the 'value' dictionary are floats
                 fields = {}
@@ -436,14 +408,13 @@ def get_daily_summaries(start_date_str, end_date_str):
                         fields[k] = safe_float_convert(v)
                 
                 if fields:
-                    record = create_record_with_unique_key(
-                        "SPO2_Daily", 
-                        time_str, 
-                        {"Device": DEVICENAME}, 
-                        fields
-                    )
-                    if record:
-                        collected_records.append(record)
+                    record = {
+                        "measurement": "SPO2_Daily",
+                        "time": time_str,
+                        "tags": {"Device": DEVICENAME},
+                        "fields": fields
+                    }
+                    collected_records.append(record)
         logging.info("Recorded Daily SpO2 summary.")
 
 
@@ -455,16 +426,15 @@ def get_activity_summaries(start_date_str, end_date_str):
         data = request_data_from_fitbit(url)
         if data and f"activities-tracker-{act_type}" in data:
             for item in data[f"activities-tracker-{act_type}"]:
-                time_str = safe_datetime_parse(item.get("dateTime"))
+                time_str = safe_datetime_parse(item.get("dateTime"), daily_measurement=True)
                 if time_str:
-                    record = create_record_with_unique_key(
-                        f"Activity-{act_type}", 
-                        time_str, 
-                        {"Device": DEVICENAME}, 
-                        {"value": safe_float_convert(item.get('value', 0))}
-                    )
-                    if record:
-                        collected_records.append(record)
+                    record = {
+                        "measurement": f"Activity-{act_type}",
+                        "time": time_str,
+                        "tags": {"Device": DEVICENAME},
+                        "fields": {"value": safe_float_convert(item.get('value', 0))}
+                    }
+                    collected_records.append(record)
             logging.info(f"Recorded Activity summary for {act_type}.")
 
     # Heart Rate Zones and Resting Heart Rate
@@ -472,7 +442,7 @@ def get_activity_summaries(start_date_str, end_date_str):
     hr_data = request_data_from_fitbit(url)
     if hr_data and 'activities-heart' in hr_data:
         for item in hr_data['activities-heart']:
-            time_str = safe_datetime_parse(item.get("dateTime"))
+            time_str = safe_datetime_parse(item.get("dateTime"), daily_measurement=True)
             if time_str and "value" in item:
                 # Heart Rate Zones
                 zones = {}
@@ -481,25 +451,23 @@ def get_activity_summaries(start_date_str, end_date_str):
                     zones[zone_name] = safe_float_convert(zone.get('minutes', 0))
                 
                 if zones:
-                    record = create_record_with_unique_key(
-                        "HR_Zones", 
-                        time_str, 
-                        {"Device": DEVICENAME}, 
-                        zones
-                    )
-                    if record:
-                        collected_records.append(record)
+                    record = {
+                        "measurement": "HR_Zones",
+                        "time": time_str,
+                        "tags": {"Device": DEVICENAME},
+                        "fields": zones
+                    }
+                    collected_records.append(record)
                 
                 # Resting Heart Rate
                 if "restingHeartRate" in item['value']:
-                    record = create_record_with_unique_key(
-                        "RestingHR", 
-                        time_str, 
-                        {"Device": DEVICENAME}, 
-                        {"value": safe_float_convert(item['value']['restingHeartRate'])}
-                    )
-                    if record:
-                        collected_records.append(record)
+                    record = {
+                        "measurement": "RestingHR",
+                        "time": time_str,
+                        "tags": {"Device": DEVICENAME},
+                        "fields": {"value": safe_float_convert(item['value']['restingHeartRate'])}
+                    }
+                    collected_records.append(record)
         logging.info("Recorded Heart Rate Zone and Resting HR summaries.")
 
 def get_sleep_data(start_date_str, end_date_str):
@@ -528,11 +496,11 @@ def get_sleep_data(start_date_str, end_date_str):
         )
         minutes_deep = safe_float_convert(summary_levels.get('deep', {}).get('minutes', 0))
 
-        record = create_record_with_unique_key(
-            "SleepSummary",
-            time_str,
-            {"Device": DEVICENAME, "isMainSleep": str(sleep_record.get("isMainSleep", False))},
-            {
+        record = {
+            "measurement": "SleepSummary",
+            "time": time_str,
+            "tags": {"Device": DEVICENAME, "isMainSleep": str(sleep_record.get("isMainSleep", False))},
+            "fields": {
                 'efficiency': safe_float_convert(sleep_record.get("efficiency", 0)),
                 'minutesAsleep': safe_float_convert(sleep_record.get('minutesAsleep', 0)),
                 'minutesInBed': safe_float_convert(sleep_record.get('timeInBed', 0)),
@@ -541,98 +509,72 @@ def get_sleep_data(start_date_str, end_date_str):
                 'minutesREM': minutes_rem,
                 'minutesDeep': minutes_deep,
             }
-        )
-        if record:
-            collected_records.append(record)
+        }
+        collected_records.append(record)
 
         # Sleep stages detail
         if 'data' in sleep_record.get('levels', {}):
             for stage in sleep_record['levels']['data']:
                 stage_time = safe_datetime_parse(stage.get("dateTime"), add_time=False)
                 if stage_time:
-                    record = create_record_with_unique_key(
-                        "SleepLevels",
-                        stage_time,
-                        {"Device": DEVICENAME, "isMainSleep": str(sleep_record.get("isMainSleep", False))},
-                        {
+                    record = {
+                        "measurement": "SleepLevels",
+                        "time": stage_time,
+                        "tags": {"Device": DEVICENAME, "isMainSleep": str(sleep_record.get("isMainSleep", False))},
+                        "fields": {
                             'level': safe_float_convert(sleep_level_map.get(stage.get("level"), -1)),
                             'duration_seconds': safe_float_convert(stage.get("seconds", 0))
                         }
-                    )
-                    if record:
-                        collected_records.append(record)
+                    }
+                    collected_records.append(record)
     logging.info(f"Recorded {len(sleep_data['sleep'])} sleep logs.")
 
-def fetch_activities_for_date(target_date_str):
-    """Fetches activities specifically for the target date only."""
-    url = f"https://api.fitbit.com/1/user/-/activities/date/{target_date_str}.json"
-    daily_activities = request_data_from_fitbit(url)
+def fetch_activities_for_date(start_date_str, end_date_str):
+    """Fetches activities for the specified date using the detailed activities list endpoint."""
+    # Use the detailed endpoint but filter results to the target date
+    next_day = (datetime.strptime(end_date_str, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+    # Fetch more activities to ensure we get all from the target date
+    url = f"https://api.fitbit.com/1/user/-/activities/list.json?beforeDate={next_day}&sort=desc&limit=20&offset=0"
+    activities_data = request_data_from_fitbit(url)
+    if not (activities_data and 'activities' in activities_data):
+        logging.warning(f"Could not fetch activities for {start_date_str}.")
+        return
     
-    activities_found = 0
+    # Filter activities to only include those from the target date
+    target_activities = []
+    for activity in activities_data['activities']:
+        activity_date = activity['startTime'][:10]  # Extract YYYY-MM-DD from startTime
+        if activity_date == start_date_str:
+            target_activities.append(activity)
+        elif activity_date < start_date_str:
+            # Since activities are sorted desc by date, we can break when we hit older dates
+            break
+    
+    if not target_activities:
+        logging.info(f"No activities found for {start_date_str}.")
+        return
+        
+    logging.info(f"Fetched {len(target_activities)} activity logs for {start_date_str}.")
+    tcx_fetch_limit = 10
     tcx_fetched_count = 0
-    tcx_fetch_limit = 5
-    
-    if daily_activities and 'activities' in daily_activities:
-        for activity in daily_activities['activities']:
-            activities_found += 1
 
-            start_time_str = activity.get('startTime')
-            activity_name = activity.get('activityName') or 'Unknown'
+    for activity in target_activities:
+        # Ensure all numeric fields are floats
+        fields = {k: float(v) for k, v in activity.items() if isinstance(v, (int, float)) and k not in ['logId', 'activityTypeId']}
+        utc_time = datetime.fromisoformat(activity['startTime'].strip("Z")).replace(tzinfo=pytz.utc).isoformat()
+        activity_id = f"{utc_time}-{activity['activityName']}"
+        # Add the activity record to the collected records
+        collected_records.append({
+            "measurement": "ActivityRecords",
+            "time": utc_time,
+            "tags": {"ActivityName": activity['activityName']},
+            "fields": fields
+        })
 
-            # --- This block now has the corrected timestamp ---
-            if not start_time_str:
-                logging.warning(
-                    f"Activity with no startTime: logId={activity.get('logId')}, "
-                    f"name={activity_name}, full activity: {activity}"
-                )
-                # Use the beginning of the target date as the placeholder time
-                placeholder_time = f"{target_date_str}T00:00:00Z"
-                
-                record = create_record_with_unique_key(
-                    "ActivityRecords",
-                    placeholder_time, # Use a valid timestamp
-                    {"ActivityName": activity_name, "MissingStartTime": "True"},
-                    # This logic to grab all primitives is a good way to dump raw data for inspection
-                    {k: v for k, v in activity.items() if isinstance(v, (int, float, str))}
-                )
-                if record:
-                    collected_records.append(record)
-                continue 
-            # ---------------------------------------------------
-
-            fields = {}
-            for k, v in activity.items():
-                if isinstance(v, (int, float)) and k not in ['logId', 'activityTypeId']:
-                    fields[k] = safe_float_convert(v)
-            
-            fields['activityLogged'] = 1.0
-
-            if ':' in start_time_str and len(start_time_str) <= 5:
-                full_datetime_str = f"{target_date_str}T{start_time_str}:00"
-            else:
-                full_datetime_str = start_time_str
-            
-            time_str = safe_datetime_parse(full_datetime_str, add_time=False)
-            
-            if time_str:
-                activity_id = f"{time_str}-{activity_name}"
-                
-                record = create_record_with_unique_key(
-                    "ActivityRecords",
-                    time_str,
-                    {"ActivityName": activity_name},
-                    fields
-                )
-                if record:
-                    collected_records.append(record)
-
-                if (activity.get("hasGps") and 
-                    activity.get("tcxLink") and 
-                    tcx_fetched_count < tcx_fetch_limit):
-                    get_tcx_data(activity["tcxLink"], activity_id)
-                    tcx_fetched_count += 1
-    
-    logging.info(f"Processed {activities_found} activities for {target_date_str}")
+        if activity.get("hasGps") and activity.get("tcxLink") and tcx_fetched_count < tcx_fetch_limit:
+            logging.info(f"Found GPS data for activity: {activity['activityName']}. Attempting to fetch.")
+            get_tcx_data(activity["tcxLink"], activity_id)
+            tcx_fetched_count += 1
 
 def get_tcx_data(tcx_url, activity_id):
     """Parses a TCX file for GPS trackpoints."""
@@ -675,15 +617,14 @@ def get_tcx_data(tcx_url, activity_id):
                     if hr_elem is not None:
                         fields["heart_rate"] = safe_float_convert(hr_elem.text)
                     
-                    record = create_record_with_unique_key(
-                        "GPS",
-                        time_str,
-                        {"ActivityID": activity_id},
-                        fields
-                    )
-                    if record:
-                        collected_records.append(record)
-                        points_added += 1
+                    record = {
+                        "measurement": "GPS",
+                        "time": time_str,
+                        "tags": {"ActivityID": activity_id},
+                        "fields": fields
+                    }
+                    collected_records.append(record)
+                    points_added += 1
         
         logging.info(f"Recorded {points_added} GPS points for {activity_id}")
     except ET.ParseError as e:
@@ -699,7 +640,7 @@ def main():
     """Main function to orchestrate the data fetching and writing process."""
     global ACCESS_TOKEN, LOCAL_TIMEZONE, collected_records
     
-    logging.info("--- Starting Fitbit data sync script ---")
+    logging.info("\n--- Starting Fitbit data sync script ---")
 
     required_vars = ['CLIENT_ID', 'CLIENT_SECRET', 'INFLUXDB_URL', 'INFLUXDB_TOKEN', 'INFLUXDB_ORG', 'INFLUXDB_BUCKET']
     missing_vars = [var for var in required_vars if not globals().get(var)]
@@ -719,7 +660,11 @@ def main():
         ACCESS_TOKEN = refresh_fitbit_tokens(CLIENT_ID, CLIENT_SECRET)
         LOCAL_TIMEZONE = get_user_timezone()
 
-        # Recommended: run after midnight for the previous day
+        # --- DATE HANDLING ---
+        # For example, to fetch data from 5 days ago:
+        # target_date = datetime.now(LOCAL_TIMEZONE) - timedelta(days=5)
+        # To fetch data for a specific date, you can set it directly:
+        # target_date = datetime(2023, 10, 1, tzinfo=LOCAL_TIMEZONE)
         target_date = datetime.now(LOCAL_TIMEZONE) - timedelta(days=1)
         date_str = target_date.strftime("%Y-%m-%d")
 
@@ -743,12 +688,16 @@ def main():
         get_battery_level()
         
         logging.info("--- Fetching activities for target date ---")
-        fetch_activities_for_date(end_date_str)
+        fetch_activities_for_date(start_date_str, end_date_str)
 
         # Filter out any None records before writing
         valid_records = [record for record in collected_records if record is not None]
         
         if valid_records:
+            # For development: write to JSON file instead of InfluxDB
+            # with open("dev_data/cromwell_fitbit_dev.json", "w") as f:
+            #     json.dump(valid_records, f, indent=2, default=str)
+            # logging.info(f"Wrote {len(valid_records)} records to dev_data/cromwell_fitbit_dev.json (development mode).")
             write_points_to_influxdb(valid_records, influx_client, influx_write_api)
         else:
             logging.warning("No valid records collected to write to InfluxDB.")
