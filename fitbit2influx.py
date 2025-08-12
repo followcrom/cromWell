@@ -664,8 +664,8 @@ def main():
         # For example, to fetch data from 5 days ago:
         # target_date = datetime.now(LOCAL_TIMEZONE) - timedelta(days=5)
         # To fetch data for a specific date, you can set it directly:
-        # target_date = datetime(2025, 7, 18, tzinfo=LOCAL_TIMEZONE)
-        target_date = datetime.now(LOCAL_TIMEZONE) - timedelta(days=1)
+        target_date = datetime(2025, 7, 25, tzinfo=LOCAL_TIMEZONE)
+        # target_date = datetime.now(LOCAL_TIMEZONE) - timedelta(days=1)
         date_str = target_date.strftime("%Y-%m-%d")
 
         start_date_str = date_str
