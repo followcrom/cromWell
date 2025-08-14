@@ -33,7 +33,7 @@ load_dotenv()
 # --- Logging Configuration ---
 FITBIT_LOG_FILE_PATH = os.environ.get("FITBIT_LOG_FILE_PATH")
 # OVERWRITE_LOG_FILE: Set to True to clear the log file on each run / Set to False to append to the log file
-OVERWRITE_LOG_FILE = False
+OVERWRITE_LOG_FILE = True
 
 # --- Fitbit API Configuration ---
 CLIENT_ID = os.getenv("CLIENT_ID")
@@ -664,7 +664,7 @@ def main():
         # For example, to fetch data from 5 days ago:
         # target_date = datetime.now(LOCAL_TIMEZONE) - timedelta(days=5)
         # To fetch data for a specific date, you can set it directly:
-        target_date = datetime(2025, 7, 25, tzinfo=LOCAL_TIMEZONE)
+        target_date = datetime(2025, 8, 13, tzinfo=LOCAL_TIMEZONE)
         # target_date = datetime.now(LOCAL_TIMEZONE) - timedelta(days=1)
         date_str = target_date.strftime("%Y-%m-%d")
 
