@@ -6,6 +6,7 @@ cw_venv/
 
 # Data files
 data/
+logs/
 fitbit_data.log
 cromwell_daily.log
 
