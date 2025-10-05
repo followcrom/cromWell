@@ -2,6 +2,10 @@
 
 Pull Fitbit health data into InfluxDB and visualize it with Grafana. All automated via a cron job that runs once a day. It’s your personal observability pipeline! 🚀
 
+## Fitbit Web API Reference
+
+https://dev.fitbit.com/build/reference/web-api/
+
 ##  🖼️ Grafana Visualization
 
 📊 [Dashboard](https://followcrom.grafana.net/d/97b9809e-408a-4f96-8f92-333e7167d952/cromwell-s-fitbit-board)

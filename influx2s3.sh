@@ -1,3 +1,9 @@
+"""
+Don't run this.
+It gets the data from InfluxDB, but that data comes in a format that is difficult to parse. Hence, we switched to using fitbit2influx.py and uploading the data to S3 directly from there.
+"""
+
+
 #!/bin/bash
 set -o pipefail
 
@@ -5,11 +11,11 @@ set -o pipefail
 # Make sure `~/.influxdbv2/configs` is properly configured with your active profile
 
 S3_BUCKET="s3://followcrom/cromwell"
-# FILENAME="cromwell_data-$(date +%Y-%m-%d).json"
+FILENAME="cromwell_data-30-days-until-$(date +%Y-%m-%d).json"
 # FILENAME="${FILENAME%.json}.gz"  # Compress the JSON file
 # FILENAME="cromwell_data-$(date +%Y-%m-%d).csv"
 
-FILENAME="cromwell_data-30-days-until-$(date +%Y-%m-%d).csv"
+# FILENAME="cromwell_data-30-days-until-$(date +%Y-%m-%d).csv"
 
 
 S3_PATH="$S3_BUCKET/$FILENAME"

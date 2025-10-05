@@ -4,8 +4,8 @@
 SCRIPT_DIR="/var/www/cromwell"
 VENV_DIR="$SCRIPT_DIR/cw_venv"
 ERROR_LOG_FILE="$SCRIPT_DIR/cromwell_error.log"
-# EMAIL="followcrom@gmail.com"
-EMAIL="hello@followcrom.com"
+EMAIL="followcrom@gmail.com"
+# EMAIL="hello@followcrom.com"
 
 # === FUNCTION TO HANDLE FAILURES ===
 handle_failure() {

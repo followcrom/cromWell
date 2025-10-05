@@ -11,12 +11,15 @@ import base64
 import requests
 import time
 import json
+import boto3
+import gzip
+import io
 import pytz
 import logging
 import os
 import sys
 from requests.exceptions import ConnectionError
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from influxdb_client import InfluxDBClient
 from influxdb_client.client.exceptions import InfluxDBError
 from influxdb_client.client.write_api import SYNCHRONOUS
@@ -33,7 +36,7 @@ load_dotenv()
 # --- Logging Configuration ---
 FITBIT_LOG_FILE_PATH = os.environ.get("FITBIT_LOG_FILE_PATH")
 # OVERWRITE_LOG_FILE: Set to True to clear the log file on each run / Set to False to append to the log file
-OVERWRITE_LOG_FILE = False
+OVERWRITE_LOG_FILE = True
 
 # --- Fitbit API Configuration ---
 CLIENT_ID = os.getenv("CLIENT_ID")
@@ -480,9 +483,20 @@ def get_sleep_data(start_date_str, end_date_str):
 
     sleep_level_map = {'wake': 3, 'rem': 2, 'light': 1, 'deep': 0, 'asleep': 1, 'restless': 2, 'awake': 3}
     for sleep_record in sleep_data['sleep']:
-        time_str = safe_datetime_parse(sleep_record.get("startTime"), add_time=False)
-        if not time_str:
+        start_time_str = sleep_record.get("startTime")
+        if not start_time_str:
             continue
+
+        # --- NEW LOGIC: Calculate endTime ---
+        # Convert start time string to a datetime object
+        start_dt = datetime.fromisoformat(start_time_str)
+        # Get duration in minutes
+        duration_minutes = float(sleep_record.get('timeInBed', 0))
+        # Calculate the end datetime
+        end_dt = start_dt + timedelta(minutes=duration_minutes)
+        # Convert end datetime back to a UTC ISO 8601 string for InfluxDB
+        end_time_str = end_dt.astimezone(timezone.utc).isoformat()
+        # --- END NEW LOGIC ---
             
         summary_levels = sleep_record.get('levels', {}).get('summary', {})
         
@@ -498,7 +512,7 @@ def get_sleep_data(start_date_str, end_date_str):
 
         record = {
             "measurement": "SleepSummary",
-            "time": time_str,
+            "time": safe_datetime_parse(start_time_str, add_time=False),
             "tags": {"Device": DEVICENAME, "isMainSleep": str(sleep_record.get("isMainSleep", False))},
             "fields": {
                 'efficiency': safe_float_convert(sleep_record.get("efficiency", 0)),
@@ -508,6 +522,7 @@ def get_sleep_data(start_date_str, end_date_str):
                 'minutesLight': minutes_light,
                 'minutesREM': minutes_rem,
                 'minutesDeep': minutes_deep,
+                'endTime': end_time_str
             }
         }
         collected_records.append(record)
@@ -632,6 +647,32 @@ def get_tcx_data(tcx_url, activity_id):
     except Exception as e:
         logging.error(f"Unexpected error processing TCX data for {activity_id}: {e}")
 
+
+def backup_to_s3_daily(records, bucket="followcrom", prefix="cromwell/fitbit/fitbit_backup"):
+    """Upload Fitbit records to S3 as a gzipped JSON file with a daily timestamp."""
+    if not records:
+        return
+
+    s3 = boto3.client("s3")
+    # Use yesterday's date in UTC (since your script writes previous day's data at 2 AM)
+    date_str = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+    key = f"{prefix}_{date_str}.json.gz"
+
+    # Compress records to gzip
+    buf = io.BytesIO()
+    with gzip.GzipFile(fileobj=buf, mode='w') as f:
+        f.write(json.dumps(records, default=str).encode("utf-8"))
+    buf.seek(0)
+
+    # Upload to S3
+    s3.upload_fileobj(
+        buf,
+        bucket,
+        key,
+        ExtraArgs={"ContentType": "application/json", "ContentEncoding": "gzip"}
+    )
+    logging.info(f"✅ Uploaded {len(records)} records to s3://{bucket}/{key}")
+
 # =============================================================================
 # ## 🚀 Main Execution
 # =============================================================================
@@ -664,7 +705,7 @@ def main():
         # For example, to fetch data from 5 days ago:
         # target_date = datetime.now(LOCAL_TIMEZONE) - timedelta(days=5)
         # To fetch data for a specific date, you can set it directly:
-        # target_date = datetime(2025, 7, 18, tzinfo=LOCAL_TIMEZONE)
+        # target_date = datetime(2025, 8, 5, tzinfo=LOCAL_TIMEZONE)
         target_date = datetime.now(LOCAL_TIMEZONE) - timedelta(days=1)
         date_str = target_date.strftime("%Y-%m-%d")
 
@@ -699,10 +740,12 @@ def main():
             #     json.dump(valid_records, f, indent=2, default=str)
             # logging.info(f"Wrote {len(valid_records)} records to dev_data/cromwell_fitbit_dev.json (development mode).")
             write_points_to_influxdb(valid_records, influx_client, influx_write_api)
+            # Backup to S3 as a new daily file
+            backup_to_s3_daily(valid_records, bucket="followcrom")
         else:
             logging.warning("No valid records collected to write to InfluxDB.")
 
-        logging.info(f"--- Script finished successfully. Total API requests made: {API_REQUEST_COUNT}, Records collected: {len(valid_records)} ---\n")
+        logging.info(f"--- Script finished successfully for {date_str}. Total API requests made: {API_REQUEST_COUNT}, Records collected: {len(valid_records)} ---\n")
 
     except Exception as e:
         logging.error(f"Fatal error in main execution: {e}")
