@@ -64,6 +64,8 @@ Sent to: $EMAIL
 ✅ The fitbit2influx.py script ran successfully.
 --------------------------------------------------
 "
-echo "$SUCCESS_REPORT" | mail -s "Fitbit2Influx Job Succeeded" "$EMAIL"
+
+# Commented out success email notification
+# echo "$SUCCESS_REPORT" | mail -s "Fitbit2Influx Job Succeeded" "$EMAIL"
 
 exit 0
