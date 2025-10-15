@@ -24,3 +24,6 @@ tokens.json
 
 # Jupyter Notebooks
 *.ipynb
+
+# Ignore Python cache files
+__pycache__/
