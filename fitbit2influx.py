@@ -739,7 +739,7 @@ def main():
             # with open("dev_data/cromwell_fitbit_dev.json", "w") as f:
             #     json.dump(valid_records, f, indent=2, default=str)
             # logging.info(f"Wrote {len(valid_records)} records to dev_data/cromwell_fitbit_dev.json (development mode).")
-            write_points_to_influxdb(valid_records, influx_client, influx_write_api)
+            # write_points_to_influxdb(valid_records, influx_client, influx_write_api)
             # Backup to S3 as a new daily file
             backup_to_s3_daily(valid_records, bucket="followcrom")
         else:

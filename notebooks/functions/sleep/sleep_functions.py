@@ -36,21 +36,17 @@ def _get_main_sleep_session(df_summary):
     return summary.iloc[0]
 
 
-def _prepare_sleep_data(df_levels, df_summary, start_time, end_time, is_main_sleep=None):
+def _prepare_sleep_data(df_levels, df_summary, start_time, end_time):
     """
-    Prepare sleep level data for a specific session.
-    Returns levels dataframe filtered, timezone-converted, and with final awake period added if needed.
+    Prepare sleep level data for a 24-hour window.
+    Adds Awake periods between sleep sessions and at the end.
     """
     # Convert all level times to local timezone
     levels = df_levels.copy()
     levels['time'] = levels['time'].dt.tz_convert(TIMEZONE)
     levels['end_time'] = levels['end_time'].dt.tz_convert(TIMEZONE)
     
-    # Filter by isMainSleep flag first to separate naps from main sleep
-    if is_main_sleep is not None and 'isMainSleep' in levels.columns:
-        levels = levels[levels['isMainSleep'] == is_main_sleep].copy()
-    
-    # Filter levels for this sleep session
+    # Filter levels for this time window
     levels = levels[
         (levels['time'] >= start_time) & 
         (levels['time'] < end_time)
@@ -59,29 +55,73 @@ def _prepare_sleep_data(df_levels, df_summary, start_time, end_time, is_main_sle
     if levels.empty:
         return levels
     
-    # Check if the last stage ends before the session end_time
-    last_stage_end = levels['end_time'].max()
+    # Sort by time
+    levels = levels.sort_values('time').reset_index(drop=True)
     
-    if last_stage_end < end_time:
-        gap_seconds = (end_time - last_stage_end).total_seconds()
+    # Get all sleep sessions from summary (converted to local timezone)
+    summary = df_summary.copy()
+    summary['time'] = summary['time'].dt.tz_convert(TIMEZONE)
+    summary['end_time'] = summary['end_time'].dt.tz_convert(TIMEZONE)
+    
+    # Sort sessions by start time
+    summary = summary.sort_values('time').reset_index(drop=True)
+    
+    gaps_to_add = []
+    
+    # For each sleep session, check if stages data ends before session end_time
+    for idx, session in summary.iterrows():
+        session_start = session['time']
+        session_end = session['end_time']
         
-        if gap_seconds > 60:  # Only add if gap is more than 1 minute
-            print(f"   ⚠️  Adding missing Awake period: {gap_seconds/60:.1f} minutes")
+        # Get stages for this session
+        session_stages = levels[
+            (levels['time'] >= session_start) & 
+            (levels['time'] < session_end)
+        ]
+        
+        if not session_stages.empty:
+            last_stage_end = session_stages['end_time'].max()
             
-            awake_record = {
-                'time': last_stage_end,
-                'end_time': end_time,
-                'level': 3.0,
-                'level_name': 'Awake',
-                'duration_seconds': gap_seconds,
-                'Device': levels['Device'].iloc[0] if 'Device' in levels.columns else 'PixelWatch3',
-            }
+            # If stages end before session end, add Awake period
+            if last_stage_end < session_end:
+                gap_seconds = (session_end - last_stage_end).total_seconds()
+                
+                if gap_seconds > 30:  # More than 30 seconds
+                    print(f"   ⚠️  Adding Awake at end of session: {gap_seconds/60:.1f} min ({last_stage_end.strftime('%H:%M')} to {session_end.strftime('%H:%M')})")
+                    
+                    gaps_to_add.append({
+                        'time': last_stage_end,
+                        'end_time': session_end,
+                        'level': 3.0,
+                        'level_name': 'Awake',
+                        'duration_seconds': gap_seconds,
+                        'Device': levels['Device'].iloc[0] if 'Device' in levels.columns else 'PixelWatch3',
+                    })
+    
+    # Find gaps BETWEEN sessions
+    for i in range(len(summary) - 1):
+        current_session_end = summary.iloc[i]['end_time']
+        next_session_start = summary.iloc[i + 1]['time']
+        
+        if current_session_end < next_session_start:
+            gap_seconds = (next_session_start - current_session_end).total_seconds()
             
-            if 'isMainSleep' in levels.columns:
-                awake_record['isMainSleep'] = levels['isMainSleep'].iloc[0]
-            
-            levels = pd.concat([levels, pd.DataFrame([awake_record])], ignore_index=True)
-            levels = levels.sort_values('time').reset_index(drop=True)
+            if gap_seconds > 60:  # More than 1 minute
+                print(f"   ⚠️  Adding Awake between sessions: {gap_seconds/60:.1f} min ({current_session_end.strftime('%H:%M')} to {next_session_start.strftime('%H:%M')})")
+                
+                gaps_to_add.append({
+                    'time': current_session_end,
+                    'end_time': next_session_start,
+                    'level': 3.0,
+                    'level_name': 'Awake',
+                    'duration_seconds': gap_seconds,
+                    'Device': levels['Device'].iloc[0] if 'Device' in levels.columns else 'PixelWatch3',
+                })
+    
+    # Add all gaps
+    if gaps_to_add:
+        levels = pd.concat([levels, pd.DataFrame(gaps_to_add)], ignore_index=True)
+        levels = levels.sort_values('time').reset_index(drop=True)
     
     return levels
 
@@ -175,54 +215,54 @@ def plot_sleep_timeline(df_levels, df_summary):
     return fig
 
 
-def plot_naps_timeline(df_levels, df_summary):
-    """Plot timeline for naps (isMainSleep = False)."""
-    if df_summary.empty:
-        print(f"❌ No sleep summary found in this file")
-        return None
+# def plot_naps_timeline(df_levels, df_summary):
+#     """Plot timeline for naps (isMainSleep = False)."""
+#     if df_summary.empty:
+#         print(f"❌ No sleep summary found in this file")
+#         return None
     
-    if 'isMainSleep' not in df_summary.columns:
-        print(f"❌ No isMainSleep column found")
-        return None
+#     if 'isMainSleep' not in df_summary.columns:
+#         print(f"❌ No isMainSleep column found")
+#         return None
     
-    naps = df_summary[df_summary['isMainSleep'] == 'False']
+#     naps = df_summary[df_summary['isMainSleep'] == 'False']
     
-    if naps.empty:
-        print(f"😴 No naps found in this file")
-        return None
+#     if naps.empty:
+#         print(f"😴 No naps found in this file")
+#         return None
     
-    print(f"Found {len(naps)} nap(s)")
+#     print(f"Found {len(naps)} nap(s)")
     
-    # Create a subplot for each nap
-    fig, axes = plt.subplots(len(naps), 1, figsize=(16, 4 * len(naps)))
-    if len(naps) == 1:
-        axes = [axes]
+#     # Create a subplot for each nap
+#     fig, axes = plt.subplots(len(naps), 1, figsize=(16, 4 * len(naps)))
+#     if len(naps) == 1:
+#         axes = [axes]
     
-    for idx, (nap_idx, nap) in enumerate(naps.iterrows()):
-        ax = axes[idx]
+#     for idx, (nap_idx, nap) in enumerate(naps.iterrows()):
+#         ax = axes[idx]
         
-        start_time = nap['time'].tz_convert(TIMEZONE)
-        end_time = nap['end_time'].tz_convert(TIMEZONE)
+#         start_time = nap['time'].tz_convert(TIMEZONE)
+#         end_time = nap['end_time'].tz_convert(TIMEZONE)
 
-        levels = _prepare_sleep_data(df_levels, df_summary, start_time, end_time)
+#         levels = _prepare_sleep_data(df_levels, df_summary, start_time, end_time)
         
-        if levels.empty:
-            ax.text(0.5, 0.5, 'No detailed stage data', 
-                   ha='center', va='center', transform=ax.transAxes)
-            continue
+#         if levels.empty:
+#             ax.text(0.5, 0.5, 'No detailed stage data', 
+#                    ha='center', va='center', transform=ax.transAxes)
+#             continue
         
-        _plot_sleep_bars(ax, levels)
+#         _plot_sleep_bars(ax, levels)
         
-        title = f'Nap {idx+1} - {start_time.strftime("%Y-%m-%d %H:%M")} to {end_time.strftime("%H:%M")} ({nap["minutesAsleep"]:.0f} min)'
-        _format_timeline_axis(ax, start_time, end_time, title, interval_minutes=15)
+#         title = f'Nap {idx+1} - {start_time.strftime("%Y-%m-%d %H:%M")} to {end_time.strftime("%H:%M")} ({nap["minutesAsleep"]:.0f} min)'
+#         _format_timeline_axis(ax, start_time, end_time, title, interval_minutes=15)
         
-        if idx == 0:
-            _add_sleep_legend(ax)
+#         if idx == 0:
+#             _add_sleep_legend(ax)
     
-    plt.tight_layout()
-    plt.show()
+#     plt.tight_layout()
+#     plt.show()
     
-    return fig
+#     return fig
 
 
 def plot_sleep_stages_pie(df_levels, df_summary):
@@ -306,8 +346,12 @@ def display_sleep_efficiency(df_summary):
             ha='center', va='center', fontsize=80, fontweight='bold', color=color)
     ax.text(0.5, 0.4, f'Sleep Efficiency - {rating}', 
             ha='center', va='center', fontsize=18, fontweight='bold')
-    ax.text(0.5, 0.3, f'{minutes_asleep:.0f} min asleep / {minutes_in_bed:.0f} min in bed', 
-            ha='center', va='center', fontsize=14, style='italic', color='orange')
+    ax.text(
+        0.5, 0.3,
+        f'{minutes_asleep:.0f} min asleep / {minutes_in_bed:.0f} min in bed\n\n'
+        f'{minutes_asleep/60:.1f} h asleep / {minutes_in_bed/60:.1f} h in bed',
+        ha='center', va='center', fontsize=14, style='italic', color=color
+    )
     
     plt.tight_layout()
     plt.show()
@@ -315,72 +359,72 @@ def display_sleep_efficiency(df_summary):
     return fig
 
 
-def plot_sleep_stages_bar(df_levels, df_summary):
-    """Plot a single vertical stacked bar showing hours of each sleep stage."""
-    summary = _get_main_sleep_session(df_summary)
-    if summary is None:
-        print(f"❌ No sleep summary found in this file")
-        return None
+# def plot_sleep_stages_bar(df_levels, df_summary):
+#     """Plot a single vertical stacked bar showing hours of each sleep stage."""
+#     summary = _get_main_sleep_session(df_summary)
+#     if summary is None:
+#         print(f"❌ No sleep summary found in this file")
+#         return None
     
-    start_time = summary['time'].tz_convert(TIMEZONE)
-    end_time = summary['end_time'].tz_convert(TIMEZONE)
+#     start_time = summary['time'].tz_convert(TIMEZONE)
+#     end_time = summary['end_time'].tz_convert(TIMEZONE)
     
-    levels = _prepare_sleep_data(df_levels, df_summary, start_time, end_time)
+#     levels = _prepare_sleep_data(df_levels, df_summary, start_time, end_time)
     
-    if levels.empty:
-        print(f"❌ No sleep level data found")
-        return None
+#     if levels.empty:
+#         print(f"❌ No sleep level data found")
+#         return None
     
-    # Calculate hours per stage
-    stage_hours = levels.groupby('level_name')['duration_seconds'].sum() / 3600
+#     # Calculate hours per stage
+#     stage_hours = levels.groupby('level_name')['duration_seconds'].sum() / 3600
     
-    # Ensure all stages are present and ordered
-    stage_order = ['Deep', 'Light', 'REM', 'Awake']
-    for stage in stage_order:
-        if stage not in stage_hours:
-            stage_hours[stage] = 0
-    stage_hours = stage_hours.reindex(stage_order, fill_value=0)
+#     # Ensure all stages are present and ordered
+#     stage_order = ['Deep', 'Light', 'REM', 'Awake']
+#     for stage in stage_order:
+#         if stage not in stage_hours:
+#             stage_hours[stage] = 0
+#     stage_hours = stage_hours.reindex(stage_order, fill_value=0)
     
-    # Calculate actual sleep time (exclude Awake)
-    time_asleep = stage_hours[['Deep', 'Light', 'REM']].sum()
-    time_in_bed = stage_hours.sum()
+#     # Calculate actual sleep time (exclude Awake)
+#     time_asleep = stage_hours[['Deep', 'Light', 'REM']].sum()
+#     time_in_bed = stage_hours.sum()
     
-    # Create plot
-    fig, ax = plt.subplots(figsize=(6, 10))
+#     # Create plot
+#     fig, ax = plt.subplots(figsize=(6, 10))
     
-    bottom = 0
-    for stage in stage_order:
-        hours = stage_hours[stage]
-        color = SLEEP_COLORS[stage]
+#     bottom = 0
+#     for stage in stage_order:
+#         hours = stage_hours[stage]
+#         color = SLEEP_COLORS[stage]
         
-        ax.bar(0, hours, bottom=bottom, color=color, edgecolor='white',
-               linewidth=2, width=0.5, label=f'{stage}: {hours:.1f}h')
+#         ax.bar(0, hours, bottom=bottom, color=color, edgecolor='white',
+#                linewidth=2, width=0.5, label=f'{stage}: {hours:.1f}h')
         
-        if hours > 0.1:
-            ax.text(0, bottom + hours/2, f'{hours:.1f}h',
-                   ha='center', va='center', fontweight='bold', 
-                   fontsize=14, color='white')
+#         if hours > 0.1:
+#             ax.text(0, bottom + hours/2, f'{hours:.1f}h',
+#                    ha='center', va='center', fontweight='bold', 
+#                    fontsize=14, color='white')
         
-        bottom += hours
+#         bottom += hours
     
-    ax.set_ylabel('Hours', fontsize=14, fontweight='bold')
-    ax.set_title(f'Sleep Composition for {start_time.strftime("%Y-%m-%d")}',
-                fontsize=16, fontweight='bold', pad=20)
-    ax.set_xlim(-0.5, 0.5)
-    ax.set_xticks([])
-    ax.legend(loc='upper right', fontsize=11, framealpha=0.9)
-    ax.grid(True, axis='y', alpha=0.3, linestyle='--')
+#     ax.set_ylabel('Hours', fontsize=14, fontweight='bold')
+#     ax.set_title(f'Sleep Composition for {start_time.strftime("%Y-%m-%d")}',
+#                 fontsize=16, fontweight='bold', pad=20)
+#     ax.set_xlim(-0.5, 0.5)
+#     ax.set_xticks([])
+#     ax.legend(loc='upper right', fontsize=11, framealpha=0.9)
+#     ax.grid(True, axis='y', alpha=0.3, linestyle='--')
     
-    # Set y-axis limit to add space for labels above bar
-    ax.set_ylim(0, time_in_bed * 1.15)  # Add 15% space at top
+#     # Set y-axis limit to add space for labels above bar
+#     ax.set_ylim(0, time_in_bed * 1.15)  # Add 15% space at top
     
-    # Add labels above the bar
-    ax.text(0, time_in_bed + 0.3, f'Time in Bed: {time_in_bed:.1f}h',
-           ha='center', fontweight='bold', fontsize=12)
-    ax.text(0, time_in_bed + 0.15, f'Time Asleep: {time_asleep:.1f}h',
-           ha='center', fontweight='bold', fontsize=12, color='orange')
+#     # Add labels above the bar
+#     ax.text(0, time_in_bed + 0.5, f'Time in Bed: {time_in_bed:.1f}h',
+#            ha='center', fontweight='bold', fontsize=12, color='orange')
+#     ax.text(0, time_in_bed + 0.25, f'Time Asleep: {time_asleep:.1f}h',
+#            ha='center', fontweight='bold', fontsize=12)
     
-    plt.tight_layout()
-    plt.show()
+#     plt.tight_layout()
+#     plt.show()
     
-    return fig
+#     return fig

@@ -2,9 +2,13 @@
 
 Pull Fitbit health data into InfluxDB and visualize it with Grafana. All automated via a cron job that runs once a day. It’s your personal observability pipeline! 🚀
 
-## Fitbit Web API Reference
+### Fitbit Web API Reference
 
 https://dev.fitbit.com/build/reference/web-api/
+
+### Fitbit Help & Community
+
+https://support.google.com/fitbit/#topic=14236398
 
 ##  🖼️ Grafana Visualization
 
@@ -18,6 +22,14 @@ Just activate the venv and run jupyter lab:
 ```bash
 source cw_venv/bin/activate
 jupyter lab
+```
+
+#### Update jupyter lab
+
+```bash
+jupyter lab --version
+
+pip install --upgrade jupyterlab
 ```
 
 ## On the dobox
