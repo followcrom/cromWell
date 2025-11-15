@@ -9,6 +9,8 @@ data/
 logs/
 fitbit_data.log
 cromwell_daily.log
+cromwell_error.log
+cromwell_cron.log
 
 # Documentation
 docs/
@@ -27,3 +29,6 @@ tokens.json
 
 # Ignore Python cache files
 __pycache__/
+
+# Windows metadata files
+*:Zone.Identifier

@@ -13,9 +13,9 @@ handle_failure() {
     local timestamp
     timestamp=$(date)
 
-    local full_report="❌ Fitbit2Influx Job Failed ❌
+    local full_report="❌ Fitbit2S3 Job Failed ❌
 --------------------------------------------------
-This is an automated report from the Fitbit2Influx job script.
+This is an automated report from the Fitbit2S3 job script.
 Error occurred at: $timestamp
 Hostname: $(hostname)
 Sent to: $EMAIL
@@ -24,7 +24,7 @@ $error_message
 --------------------------------------------------
 "
     echo "$full_report" > "$ERROR_LOG_FILE"
-    echo "$full_report" | mail -s "Fitbit2Influx Job Failed" "$EMAIL"
+    echo "$full_report" | mail -s "Fitbit2S3 Job Failed" "$EMAIL"
     echo "[ERROR] $error_message"
     exit 1
 }
@@ -42,8 +42,8 @@ fi
 echo "[INFO] Activating virtual environment"
 source "$VENV_DIR/bin/activate"
 
-echo "[INFO] Running fitbit2influx.py"
-PYTHON_OUTPUT=$(python "$SCRIPT_DIR/fitbit2influx.py" 2>&1)
+echo "[INFO] Running fitbit2s3.py"
+PYTHON_OUTPUT=$(python "$SCRIPT_DIR/fitbit2s3.py" 2>&1)
 EXIT_CODE=$?
 deactivate
 
@@ -58,14 +58,14 @@ echo "[INFO] Script completed successfully."
 
 SUCCESS_REPORT="Timestamp: $(date)
 Hostname: $(hostname)
-Status: ✅ Fitbit2Influx Job Succeeded
+Status: ✅ Fitbit2S3 Job Succeeded
 Sent to: $EMAIL
 --------------------------------------------------
-✅ The fitbit2influx.py script ran successfully.
+✅ The fitbit2s3.py script ran successfully.
 --------------------------------------------------
 "
 
 # Commented out success email notification
-# echo "$SUCCESS_REPORT" | mail -s "Fitbit2Influx Job Succeeded" "$EMAIL"
+# echo "$SUCCESS_REPORT" | mail -s "Fitbit2S3 Job Succeeded" "$EMAIL"
 
 exit 0

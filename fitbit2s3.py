@@ -3,7 +3,7 @@
 
 """
 This script fetches personal Fitbit data (e.g., heart rate, sleep, steps, activity)
-via the Fitbit API and writes it to an InfluxDB 2.x database. It's designed
+via the Fitbit API and backs it up to AWS S3 as gzipped JSON files. It's designed
 to be run once daily at the end of the day via a cron job.
 """
 
@@ -20,9 +20,6 @@ import os
 import sys
 from requests.exceptions import ConnectionError
 from datetime import datetime, timedelta, timezone
-from influxdb_client import InfluxDBClient
-from influxdb_client.client.exceptions import InfluxDBError
-from influxdb_client.client.write_api import SYNCHRONOUS
 import xml.etree.ElementTree as ET
 from dotenv import load_dotenv
 
@@ -44,12 +41,6 @@ CLIENT_SECRET = os.getenv("CLIENT_SECRET")
 TOKEN_FILE_PATH = os.getenv("TOKEN_FILE_PATH")
 FITBIT_LANGUAGE = os.getenv("FITBIT_LANGUAGE", "en_US")
 DEVICENAME = os.getenv("DEVICENAME", "PixelWatch3")
-
-# --- InfluxDB 2.x Configuration ---
-INFLUXDB_URL = os.getenv("INFLUXDB_URL")
-INFLUXDB_TOKEN = os.getenv("INFLUXDB_TOKEN")
-INFLUXDB_ORG = os.getenv("INFLUXDB_ORG")
-INFLUXDB_BUCKET = os.getenv("INFLUXDB_BUCKET")
 
 # --- Script Behavior ---
 REQUEST_DELAY_SECONDS = 2
@@ -79,7 +70,7 @@ logging.basicConfig(
 )
 
 # =============================================================================
-# ## 🌐 API and Database Functions
+# ## 🌐 API and Storage Functions
 # =============================================================================
 
 def safe_float_convert(value, default=0.0):
@@ -230,24 +221,6 @@ def refresh_fitbit_tokens(client_id, client_secret):
         return new_access_token
     else:
         raise Exception("Failed to refresh Fitbit tokens.")
-
-
-def write_points_to_influxdb(points, client, write_api):
-    """Writes a list of data points to InfluxDB 2.x."""
-    if not points:
-        logging.info("No new points to write to InfluxDB.")
-        return
-    try:
-        write_api.write(bucket=INFLUXDB_BUCKET, org=INFLUXDB_ORG, record=points)
-        logging.info(f"Successfully wrote {len(points)} points to InfluxDB.")
-    except InfluxDBError as e:
-        logging.error(f"Error writing to InfluxDB: {e}")
-        # Log the full error details from the server
-        if e.response:
-            logging.error(f"Reason: {e.response.reason}")
-            logging.error(f"HTTP response headers: {e.response.headers}")
-            logging.error(f"HTTP response body: {e.response.data}")
-        sys.exit("Exiting due to InfluxDB write error.")
 
 
 def get_user_timezone():
@@ -494,7 +467,7 @@ def get_sleep_data(start_date_str, end_date_str):
         duration_minutes = float(sleep_record.get('timeInBed', 0))
         # Calculate the end datetime
         end_dt = start_dt + timedelta(minutes=duration_minutes)
-        # Convert end datetime back to a UTC ISO 8601 string for InfluxDB
+        # Convert end datetime back to a UTC ISO 8601 string
         end_time_str = end_dt.astimezone(timezone.utc).isoformat()
         # --- END NEW LOGIC ---
             
@@ -683,18 +656,10 @@ def main():
     
     logging.info("--- Starting Fitbit data sync script ---")
 
-    required_vars = ['CLIENT_ID', 'CLIENT_SECRET', 'INFLUXDB_URL', 'INFLUXDB_TOKEN', 'INFLUXDB_ORG', 'INFLUXDB_BUCKET']
+    required_vars = ['CLIENT_ID', 'CLIENT_SECRET']
     missing_vars = [var for var in required_vars if not globals().get(var)]
     if missing_vars:
         logging.error(f"Fatal: The following required environment variables are not set: {', '.join(missing_vars)}")
-        sys.exit(1)
-
-    try:
-        influx_client = InfluxDBClient(url=INFLUXDB_URL, token=INFLUXDB_TOKEN, org=INFLUXDB_ORG)
-        influx_write_api = influx_client.write_api(write_options=SYNCHRONOUS)
-        logging.info("Successfully connected to InfluxDB.")
-    except Exception as e:
-        logging.error(f"Fatal: Could not connect to InfluxDB. Aborting. Error: {e}")
         sys.exit(1)
 
     try:
@@ -735,28 +700,16 @@ def main():
         valid_records = [record for record in collected_records if record is not None]
         
         if valid_records:
-            # For development: write to JSON file instead of InfluxDB
-            # with open("dev_data/cromwell_fitbit_dev.json", "w") as f:
-            #     json.dump(valid_records, f, indent=2, default=str)
-            # logging.info(f"Wrote {len(valid_records)} records to dev_data/cromwell_fitbit_dev.json (development mode).")
-            # write_points_to_influxdb(valid_records, influx_client, influx_write_api)
             # Backup to S3 as a new daily file
             backup_to_s3_daily(valid_records, bucket="followcrom")
         else:
-            logging.warning("No valid records collected to write to InfluxDB.")
+            logging.warning("No valid records collected.")
 
         logging.info(f"--- Script finished successfully for {date_str}. Total API requests made: {API_REQUEST_COUNT}, Records collected: {len(valid_records)} ---\n")
 
     except Exception as e:
         logging.error(f"Fatal error in main execution: {e}")
         sys.exit(1)
-    finally:
-        # Clean up
-        if 'influx_client' in locals():
-            try:
-                influx_client.close()
-            except:
-                pass
 
 if __name__ == "__main__":
     main()
