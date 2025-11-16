@@ -266,7 +266,7 @@ else:
 
 ## 📅 Commit Activity 🕹️
 
-![GitHub last commit](https://img.shields.io/github/last-commit/followcrom/cromWell)
+![GitHub last commit](https://img.shields.io/github/last-commit/followcrom/cromWell/S3)
 ![GitHub commit activity](https://img.shields.io/github/commit-activity/m/followcrom/cromWell)
 ![GitHub repo size](https://img.shields.io/github/repo-size/followcrom/cromWell)
 
