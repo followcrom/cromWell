@@ -18,10 +18,10 @@ The `notebooks/` directory contains interactive Jupyter notebooks for explorator
 
 ### Available Notebooks
 
-- **SLEEP-CLAUDE.ipynb** - 24-hour sleep timeline visualization with stage analysis (Deep, Light, REM, Awake), sleep efficiency metrics, and nap detection
+- **SLEEP-ANALYSIS.ipynb** - 24-hour sleep timeline visualization with stage analysis (Deep, Light, REM, Awake), sleep efficiency metrics, and nap detection
 - **HEART RATE VISUALIZATION.ipynb** - Heart rate analysis and visualization
 - **PERFORMANCE ANALYSIS.ipynb** - Activity and performance metrics
-- **Steps_Analysis.ipynb** - Step count analysis and trends
+- **Steps_ANALYSIS.ipynb** - Step count analysis and trends
 - **VARIOUS_METRICS.ipynb** - Additional health metrics (HRV, SpO2, skin temperature, etc.)
 
 ### Running Jupyter Lab
