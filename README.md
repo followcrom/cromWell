@@ -1,6 +1,8 @@
 # 🏃‍♂️ CromWell 🍋🥝🍌🍐🥥🍈
 
-Pull Fitbit health data into InfluxDB and visualize it with Grafana. All automated via a cron job that runs once a day. It’s your personal observability pipeline! 🚀
+Pull Fitbit health data and store it in AWS S3 as gzipped JSON backups. Analyze your health metrics with Jupyter notebooks. All automated via a cron job that runs once a day. It's your personal observability pipeline! 🚀
+
+**Recent Migration**: This project has migrated from InfluxDB to S3 storage for better data persistence and portability.
 
 ### Fitbit Web API Reference
 
@@ -10,47 +12,63 @@ https://dev.fitbit.com/build/reference/web-api/
 
 https://support.google.com/fitbit/#topic=14236398
 
-##  🖼️ Grafana Visualization
+## 🛠️ Data Analysis with Jupyter Notebooks
 
-📊 [Dashboard](https://followcrom.grafana.net/d/97b9809e-408a-4f96-8f92-333e7167d952/cromwell-s-fitbit-board)
+The `notebooks/` directory contains interactive Jupyter notebooks for exploratory data analysis (EDA) of your Fitbit health data.
 
+### Available Notebooks
 
-## 🛠️ Local EDA
+- **SLEEP-ANALYSIS.ipynb** - 24-hour sleep timeline visualization with stage analysis (Deep, Light, REM, Awake), sleep efficiency metrics, and nap detection
+- **HEART RATE VISUALIZATION.ipynb** - Heart rate analysis and visualization
+- **PERFORMANCE ANALYSIS.ipynb** - Activity and performance metrics
+- **Steps_ANALYSIS.ipynb** - Step count analysis and trends
+- **VARIOUS_METRICS.ipynb** - Additional health metrics (HRV, SpO2, skin temperature, etc.)
 
-Just activate the venv and run jupyter lab:
+### Running Jupyter Lab
 
 ```bash
 source cw_venv/bin/activate
 jupyter lab
 ```
 
-#### Update jupyter lab
+The notebooks automatically fetch data from S3 using the `get_fitbit_data_for_date()` function. Simply enter a date in `YYYY-MM-DD` format when prompted.
+
+**Recent Improvements to SLEEP-CLAUDE.ipynb**:
+- Added robust error handling for dates with missing sleep data
+- Graceful fallback when sleep stages or summary data is unavailable
+- Prevents `NoneType` errors by checking data existence before processing
+
+#### Update Jupyter Lab
 
 ```bash
 jupyter lab --version
-
 pip install --upgrade jupyterlab
-```
-
-## On the dobox
-
-```bash
-chmod 755 run_fitbit2influx.sh
-chown root:root run_fitbit2influx.sh
 ```
 
 ## 📦 Project Overview
 
-`fitbit2influx.py` is a Python script that:
+### Main Scripts
 
-✅ Authenticates with the Fitbit API  
-📥 Pulls detailed health metrics (sleep, activity, HR, SpO₂, etc.)  
-🛢 Stores that data in InfluxDB  
-📈 Feeds your Grafana dashboards with up-to-date personal metrics  
+**`fitbit2s3.py`** - Main data collection script that:
 
-`run_fitbit2influx.sh` is a shell script that:
+✅ Authenticates with the Fitbit API using OAuth tokens
+📥 Pulls detailed health metrics (sleep, activity, HR, SpO₂, HRV, etc.)
+🗜️ Compresses data as gzipped JSON
+☁️ Backs up to AWS S3 (`s3://followcrom/cromwell/fitbit/`)
+⏰ Runs daily via cron job at 2-3 AM
 
-📬 Sends an email alert if anything goes wrong
+**`run_fitbit2s3.sh`** - Shell wrapper that:
+
+🔄 Activates the virtual environment
+📬 Sends email alerts on failure
+📝 Handles error logging
+
+### Deployment on Server
+
+```bash
+chmod 755 run_fitbit2s3.sh
+chown root:root run_fitbit2s3.sh
+```
 
 ---
 
@@ -75,121 +93,180 @@ These should be stored securely in a .env file or secure vault, loaded by the sc
 
 ```
 cromwell/
-├── fitbit2influx.py        # Main Python script
-├── run_fitbit2influx.sh    # Shell wrapper for running the script with logging and error handling
+├── fitbit2s3.py            # Main data collection script (migrated from fitbit2influx.py)
+├── run_fitbit2s3.sh        # Shell wrapper with error handling and email alerts
 ├── cw_venv/                # Python virtual environment
-├── data/                   # JSON data files
-├── fitbit_data.log         # Log file for Fitbit data
+├── notebooks/              # Jupyter notebooks for data analysis
+│   ├── SLEEP-CLAUDE.ipynb         # Sleep analysis with 24-hour timelines
+│   ├── HEART RATE VISUALIZATION.ipynb
+│   ├── PERFORMANCE ANALYSIS.ipynb
+│   ├── Steps_Analysis.ipynb
+│   ├── VARIOUS_METRICS.ipynb
+│   ├── functions/          # Helper functions for notebooks
+│   │   ├── import_data.py         # S3 data fetching utilities
+│   │   ├── sleep/
+│   │   │   └── sleep_functions.py
+│   │   └── various/
+│   │       └── various_metrics_functions.py
+│   └── imgs/               # Images for notebook headers
+├── fitbit_data.log         # Log file for Fitbit data collection
 ├── cromwell_cron.log       # Log file for cron job execution
+├── tokens.json             # OAuth tokens (auto-refreshed)
 ├── requirements.txt        # Python dependencies
-├── .env                    # Environment variables for configuration
-├── .gitignore              # Git ignore file
+├── .env                    # Environment variables (CLIENT_ID, CLIENT_SECRET, etc.)
+├── CLAUDE.md               # Instructions for Claude Code (AI assistant)
+├── .gitignore
 └── README.md
 ```
 
-## InfluxDB
+## ☁️ AWS S3 Data Storage
 
-```bash
-influx bucket list
+### S3 Bucket Structure
+
+```
+s3://followcrom/cromwell/fitbit/
+├── fitbit_backup_2025-01-15.json.gz
+├── fitbit_backup_2025-01-16.json.gz
+├── fitbit_backup_2025-01-17.json.gz
+└── ...
 ```
 
-List Measurements:
+Each file contains all measurements for a single day as a gzipped JSON array.
 
-```bash
-influx query 'import "influxdata/influxdb/schema"
-  schema.measurements(bucket: "cromwell-fitbit-2")'
+### Record Format
+
+Each measurement record follows this structure:
+
+```json
+{
+  "measurement": "HeartRate_Intraday",
+  "time": "2025-10-08T12:34:56+00:00",
+  "tags": {"Device": "PixelWatch3"},
+  "fields": {"value": 72.0}
+}
 ```
 
-List Tag Keys:
+### Available Measurement Types
 
-Tags are key-value pairs that store metadata and are indexed for fast querying. To see all the tag keys for a specific measurement:
+**Intraday data (high frequency):**
+- `HeartRate_Intraday` - 1 second resolution (~20,000+ records/day)
+- `Steps_Intraday` - 1 minute resolution (~1,440 records/day)
 
-```bash
-influx query 'import "influxdata/influxdb/schema"
-schema.measurementTagKeys(
-bucket: "cromwell-fitbit-2",
-measurement: "HRV"
-)'
+**Daily summaries (1 record/day):**
+- `HRV` - Heart rate variability (dailyRmssd, deepRmssd)
+- `BreathingRate` - Breaths per minute
+- `SkinTemperature` - Nightly relative temperature
+- `SPO2_Daily` - Blood oxygen saturation (avg, max, min)
+- `RestingHR` - Resting heart rate
+- `DeviceBatteryLevel` - Device battery percentage
+- `Weight` - Weight in kg and BMI
+- `Activity-*` - Steps, calories, distance, active minutes
+- `HR_Zones` - Minutes in each heart rate zone
+
+**Sleep data:**
+- `SleepSummary` - Efficiency, minutes asleep/awake/deep/light/REM
+- `SleepLevels` - Timestamped sleep stage transitions with durations
+
+**Activity data:**
+- `ActivityRecords` - Logged activities (walks, runs, etc.)
+- `GPS` - GPS trackpoints from activities (lat, lon, altitude, HR)
+
+### Accessing Data from Notebooks
+
+```python
+from functions.import_data import get_fitbit_data_for_date
+
+# Fetch data for a specific date
+dfs = get_fitbit_data_for_date('2025-10-08')
+
+# Access specific measurement types
+df_hr = dfs.get('HeartRate_Intraday')
+df_sleep_summary = dfs.get('SleepSummary')
+df_sleep_levels = dfs.get('SleepLevels')
 ```
 
-List Field Keys:
-
-Fields are the key-value pairs that store your actual time series data (e.g., temperature, pressure). Unlike tags, fields are not indexed. To see the field keys for a measurement:
-
-```bash
-influx query 'import "influxdata/influxdb/schema"
-  schema.measurementFieldKeys(
-    bucket: "cromwell-fitbit-2",
-    measurement: "HRV"
-  )'
-```
-
-List Series:
-
-A series is a unique combination of measurement, tag set, and field key. To see all series in a bucket:
-
-```bash
-influx query 'from(bucket: "cromwell-fitbit-2") |> range(start: -1d) |> filter(fn: (r) => r._measurement == "HeartRate_Intraday") |> sort(columns: ["_time"]) |> limit(n: 200)'
-```
-
-
-### Query Bounds vs. Data Timestamp 📚
-
-When you run a query in InfluxDB, you often specify a time range using the `range(start: -7d)` function. This tells InfluxDB to return data points within the last 7 days.
-
-The `_start` and `_stop` columns are ephemeral metadata generated by InfluxDB's query engine every time you run a query. They exist only in the query results to give you context about the time window that was searched.
-
-The only time-related column that is permanently stored in the database alongside your values is the `_time` column.
-
-To put it simply:
-
-- **Stored in the Database**: _time, _measurement, _field, _value, and any tags you have (e.g., Device).
-
-- **Generated by each Query**: _start, _stop, and other metadata columns like table.
+The `get_fitbit_data_for_date()` function:
+- Fetches the gzipped file from S3 using boto3 (profile: 'surface')
+- Parses JSON into pandas DataFrames grouped by measurement type
+- Converts timestamps to timezone-aware datetime objects
 
 <br>
 
-## Issues
+## ⚙️ Timezone Handling
 
-BST = UTC+1 - The Solution
+### BST = UTC+1 - The Solution
 
-Instead of using midnight (00:00:00), I use noon (12:00:00) in your local timezone. Why noon? Because noon BST (12:00:00+01:00) converts to 11:00:00 UTC - still on the correct date!
+Instead of using midnight (00:00:00), the script uses noon (12:00:00) in your local timezone for daily measurements. Why noon? Because noon BST (12:00:00+01:00) converts to 11:00:00 UTC - still on the correct date!
 
-- Before: 2025-08-02T23:00:00+00:00 ❌ (wrong date)
-- After: 2025-08-03T11:00:00+00:00 ✅ (correct date)
+- Before: 2025-08-02T23:00:00+00:00 ❌ (wrong date when viewing in BST)
+- After: 2025-08-03T11:00:00+00:00 ✅ (correct date in all timezones)
 
-Many data systems do this - assign canonical timestamps to daily aggregates.
+Many data systems use this approach - assigning canonical timestamps to daily aggregates to avoid date shifting issues.
 
-Example Timeline:
+### Example Timeline:
 
-- August 3rd: You live your day, Fitbit tracks everything
-- August 4th 3:00 AM: Script runs and collects yesterday's data
-- August 4th 3:05 AM: Data gets written to InfluxDB with timestamp "August 3rd 11:00 AM UTC"
+- **August 3rd**: You live your day, Fitbit tracks everything
+- **August 4th 3:00 AM**: Cron job runs `fitbit2s3.py` and collects yesterday's data
+- **August 4th 3:05 AM**: Data gets written to S3 as `fitbit_backup_2025-08-03.json.gz`
+- **Daily measurements**: Timestamped as "August 3rd 11:00 AM UTC" (noon in local time)
+- **Intraday data**: Uses actual timestamps from Fitbit API
+- **Sleep data**: Preserves original timestamps from Fitbit API
 
 <br>
 
-## Grafana Dashboard
+## 📊 Data Visualization
 
-Activites Overview:
+All data visualization is now handled through Jupyter notebooks in the `notebooks/` directory. The notebooks provide:
 
-Configure the Columns (The Magic Part ✨):
-This is where you add the bar gauges. You'll use the Overrides tab on the right-hand panel. You need to create an override for each activity column.
+- **Interactive plots** using matplotlib and seaborn
+- **24-hour sleep timelines** with stage-by-stage breakdown
+- **Heart rate zones** and trends over time
+- **Activity metrics** and performance analysis
+- **Custom time windows** and date selection
 
-For your "Walk" column:
+**Example visualization from SLEEP-CLAUDE.ipynb:**
+- Horizontal timeline showing Deep, Light, REM, and Awake stages
+- Sleep efficiency metrics with color-coded ratings
+- Pie charts for sleep stage distribution
+- Nap detection and analysis
+- Stacked bar charts for sleep composition
 
-Go to the Overrides tab and click "Add field override".
+The notebook-based approach provides more flexibility than static dashboards and allows for custom analysis tailored to your specific questions.
 
-Select Fields with name. From the dropdown, choose Walk.
+---
 
-Click "+ Add override property" and select "Standard options -> Unit. From the dropdown, search for and select Time > minutes (min).
+## 🆕 Recent Updates
 
-Click "+ Add override property" again and select Cell optins -> Cell type. From the dropdown, choose Gauge.
+### January 2025 - Migration to S3 Storage
+- **Migrated from InfluxDB to AWS S3** for better data persistence and portability
+- Renamed scripts: `fitbit2influx.py` → `fitbit2s3.py`
+- Implemented gzipped JSON backups for efficient storage
+- Updated notebooks to fetch data directly from S3 using boto3
 
-You can then customize the gauge's appearance. I have been using "Retro LCD" & "Value color".
+### SLEEP-CLAUDE.ipynb Error Handling Improvements
+- **Added robust error handling** for dates with missing sleep data
+- **Graceful fallbacks** when `SleepLevels` or `SleepSummary` data is unavailable
+- **Conditional processing** - all data processing cells now check if data exists before attempting operations
+- **Prevents NoneType errors** by validating data existence throughout the workflow
+- **User-friendly messages** when no sleep data is found for a specific date
+
+**Example:**
+```python
+# Before (would crash)
+df_sleep_levels['end_time'] = df_sleep_levels['time'] + ...
+
+# After (gracefully handles missing data)
+if df_sleep_levels is not None:
+    df_sleep_levels['end_time'] = df_sleep_levels['time'] + ...
+else:
+    print("⚠️  Skipping processing - no sleep data available for this date")
+```
+
+---
 
 ## 📅 Commit Activity 🕹️
 
-![GitHub last commit](https://img.shields.io/github/last-commit/followcrom/cromWell)
+![GitHub last commit](https://img.shields.io/github/last-commit/followcrom/cromWell/S3)
 ![GitHub commit activity](https://img.shields.io/github/commit-activity/m/followcrom/cromWell)
 ![GitHub repo size](https://img.shields.io/github/repo-size/followcrom/cromWell)
 
