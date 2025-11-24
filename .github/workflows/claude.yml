@@ -18,23 +18,40 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
-      contents: write  # CHANGED: write access for file modifications
-      pull-requests: write  # CHANGED: write access for PR operations
-      issues: write  # CHANGED: write access for issue operations
+      contents: write      # Required for file modifications
+      pull-requests: write # Required for PR operations
+      issues: write        # Required for issue operations
       id-token: write
       actions: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
-          token: ${{ secrets.GITHUB_TOKEN }}  # ADDED: for push permissions
+          fetch-depth: 0  # Full history for better git operations
+          
+      - name: Configure Git
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies for notebook editing
+        run: |
+          pip install jupyter nbformat ipykernel
+          
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}  # Add this for better git operations
+          use_commit_signing: true  # Enable commit signing for security
           additional_permissions: |
             actions: read
-          # ADDED: Allow file operations and git commands
-          claude_args: '--allowed-tools "Bash(git:*),Bash(gh:*),str_replace,file_create,view"'
+          # Remove restrictions to allow all tools by default
+          # Or explicitly allow the tools Claude needs:
+          # claude_args: '--allowed-tools "*"'
