@@ -1,5 +1,4 @@
 name: Claude Code
-
 on:
   issue_comment:
     types: [created]
@@ -9,7 +8,6 @@ on:
     types: [opened, assigned]
   pull_request_review:
     types: [submitted]
-
 jobs:
   claude:
     if: |
@@ -18,23 +16,28 @@ jobs:
       (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
       (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
-      contents: write
-      pull-requests: write
-      issues: write
+      contents: write  # CHANGED: write access for file modifications
+      pull-requests: write  # CHANGED: write access for PR operations
+      issues: write  # CHANGED: write access for issue operations
       id-token: write
-      actions: read # Required for Claude to read CI results on PRs
+      actions: read
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
         with:
           fetch-depth: 1
-
+          token: ${{ secrets.GITHUB_TOKEN }}  # ADDED: for push permissions
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          additional_permissions: |
+            actions: read
+          # ADDED: Allow file operations and git commands
+          claude_args: '--allowed-tools "Bash(git:*),Bash(gh:*),str_replace,file_create,view"'
 
           # Optional: Customize the trigger phrase (default: @claude)
           # trigger_phrase: "/claude"
