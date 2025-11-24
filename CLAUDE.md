@@ -163,6 +163,39 @@ dfs = get_fitbit_data_for_date('2025-10-08')
 - Parses raw JSON records into pandas DataFrames
 - Flattens tags and fields into columns
 - Converts time strings to pandas datetime with timezone
+- **Automatically converts activity distances from miles to kilometers**
+
+### Distance Unit Conversion (Important!)
+
+**Issue:** Fitbit API returns ALL activity distances in **MILES**, regardless of activity type:
+- GPS-tracked runs: miles
+- Treadmill runs: miles
+- Swimming: miles
+- Walking: miles
+
+**Solution:** The `parse_fitbit_data()` function automatically converts all activity distances to kilometers and recalculates pace/speed accordingly.
+
+**Implementation:**
+- Original distance (miles) stored in `distance_miles` field
+- Converted distance (km) in `distance` field
+- Pace recalculated as seconds/km
+- Speed recalculated as km/h
+
+**Example:**
+```python
+# API returns: distance = 2.619 miles (GPS run)
+# After parsing:
+#   distance_miles = 2.619
+#   distance = 4.215 km
+#   pace = 763 sec/km (12:43 min/km)
+#   speed = 4.72 km/h
+```
+
+**Note for Treadmill Runs:**
+- GPS distance is unreliable for treadmill runs (measures position drift, not actual distance)
+- Use "Treadmill" activity type instead of "Run" on your watch
+- Treadmill's built-in distance measurement is most accurate
+- Fitbit app may show different distance than GPS due to step-counting algorithms
 
 ### Typical Notebook Workflow
 1. Import boto3 and configure S3 session with profile='surface'

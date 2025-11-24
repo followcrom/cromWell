@@ -59,7 +59,10 @@ def get_fitbit_data_for_date(date_str):
 
 def parse_fitbit_data(data):
     """Parse the list of measurements into separate DataFrames by measurement type"""
-    
+
+    # Conversion constant
+    MILES_TO_KM = 1.609344
+
     # Group data by measurement type
     measurements_dict = {}
     for record in data:
@@ -67,32 +70,50 @@ def parse_fitbit_data(data):
         if measurement not in measurements_dict:
             measurements_dict[measurement] = []
         measurements_dict[measurement].append(record)
-    
+
     # Convert each measurement type to a DataFrame
     dfs = {}
-    
+
     for measurement, records in measurements_dict.items():
         parsed_records = []
         for record in records:
             flat_record = {
                 'time': pd.to_datetime(record['time']),
             }
-            
+
             # Add all tags
             if 'tags' in record:
                 for tag_key, tag_value in record['tags'].items():
                     flat_record[tag_key] = tag_value
-            
+
             # Add all fields
             if 'fields' in record:
                 flat_record.update(record['fields'])
-            
+
+            # FIX: Convert distance from miles to km for ALL activities
+            # Fitbit API returns distance in MILES for all activities (GPS, treadmill, swimming, etc.)
+            if measurement == 'ActivityRecords' and 'distance' in flat_record and flat_record['distance'] is not None and flat_record['distance'] > 0:
+                # Store original distance in miles
+                flat_record['distance_miles'] = flat_record['distance']
+                # Convert to kilometers
+                flat_record['distance'] = flat_record['distance'] * MILES_TO_KM
+
+                # Recalculate pace (seconds per km) with corrected distance
+                if 'duration' in flat_record and flat_record['distance'] > 0:
+                    duration_seconds = flat_record['duration'] / 1000  # duration is in milliseconds
+                    flat_record['pace'] = duration_seconds / flat_record['distance']
+
+                # Recalculate speed (km/h) with corrected distance
+                if 'duration' in flat_record and flat_record['distance'] > 0:
+                    duration_hours = (flat_record['duration'] / 1000) / 3600
+                    flat_record['speed'] = flat_record['distance'] / duration_hours
+
             parsed_records.append(flat_record)
-        
+
         # Create DataFrame
         df = pd.DataFrame(parsed_records)
         df = df.sort_values('time').reset_index(drop=True)
-        
+
         dfs[measurement] = df
-    
+
     return dfs
