@@ -22,7 +22,7 @@ jobs:
       pull-requests: write # Required for PR operations
       issues: write        # Required for issue operations
       id-token: write
-      actions: read
+      actions: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
