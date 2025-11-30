@@ -27,35 +27,31 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
-          token: ${{ secrets.GITHUB_TOKEN }}  # ADDED: for push permissions
+          fetch-depth: 0  # Full history for better git operations
+          
+      - name: Configure Git
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies for notebook editing
+        run: |
+          pip install jupyter nbformat ipykernel
+          
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}  # Add this for better git operations
+          use_commit_signing: true  # Enable commit signing for security
           additional_permissions: |
             actions: read
-          # ADDED: Allow file operations and git commands
-          claude_args: '--allowed-tools "Bash(git:*),Bash(gh:*),str_replace,file_create,view"'
-
-          # Optional: Customize the trigger phrase (default: @claude)
-          # trigger_phrase: "/claude"
-
-          # Optional: Trigger when specific user is assigned to an issue
-          # assignee_trigger: "claude-bot"
-
-          # Optional: Configure Claude's behavior with CLI arguments
-          # claude_args: |
-          #   --model claude-opus-4-1-20250805
-          #   --max-turns 10
-          #   --allowedTools "Bash(npm install),Bash(npm run build),Bash(npm run test:*),Bash(npm run lint:*)"
-          #   --system-prompt "Follow our coding standards. Ensure all new code has tests. Use TypeScript for new files."
-
-          # Optional: Advanced settings configuration
-          # settings: |
-          #   {
-          #     "env": {
-          #       "NODE_ENV": "test"
-          #     }
-          #   }
+          # Remove restrictions to allow all tools by default
+          # Or explicitly allow the tools Claude needs:
+          # claude_args: '--allowed-tools "*"'
