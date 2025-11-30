@@ -18,11 +18,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
-      contents: write      # Required for file modifications
-      pull-requests: write # Required for PR operations
-      issues: write        # Required for issue operations
+      contents: write  # CHANGED: write access for file modifications
+      pull-requests: write  # CHANGED: write access for PR operations
+      issues: write  # CHANGED: write access for issue operations
       id-token: write
-      actions: write
+      actions: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

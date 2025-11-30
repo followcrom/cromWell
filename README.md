@@ -190,6 +190,102 @@ The `get_fitbit_data_for_date()` function:
 - Parses JSON into pandas DataFrames grouped by measurement type
 - Converts timestamps to timezone-aware datetime objects
 
+### Data from S3
+
+Data is stored in AWS S3 at `s3://followcrom/cromwell/fitbit/` as gzipped JSON files named `fitbit_backup_YYYY-MM-DD.json.gz`. Each file contains all measurements for that day.
+
+To get the data from the S3 to local machine, run:
+
+```bash
+./fitbit_s3-2-local.sh
+```
+
+### Compiling Multiple Days into Parquet
+
+For faster analysis across multiple days, compile all daily JSON.gz files into a single Parquet file.
+
+#### Quick Start with Shell Scripts
+
+**⚠️ IMPORTANT: Which script to use?**
+
+```bash
+# ============================================================================
+# INITIAL COMPILATION (first time only, HIGH MEMORY USAGE)
+# ============================================================================
+# Only run this ONCE when first creating the Parquet file
+# Processes ALL historical files at once - may use several GB of RAM
+./compile_fitbit_data.sh
+
+# ============================================================================
+# DAILY UPDATES (LOW MEMORY - USE THIS FOR REGULAR UPDATES)
+# ============================================================================
+# Run this daily to add new data to existing Parquet file
+# Processes files one at a time - memory-efficient
+./update_fitbit_data.sh
+```
+
+**Why two scripts?**
+- **`compile_fitbit_data.sh`**: Loads all files into memory at once. Fast but memory-intensive. Use only for initial setup or complete rebuilds.
+- **`update_fitbit_data.sh`**: Uses `update_parquet_lowmem.py` which processes files one at a time. Slower but won't run out of memory. Use for daily updates.
+
+#### Manual Usage
+
+If you prefer to run the Python scripts directly:
+
+```bash
+# ============================================================================
+# INITIAL COMPILATION (HIGH MEMORY - first time only)
+# ============================================================================
+python data/compile_fitbit_data.py --compile --data-dir data
+
+# Custom output location
+python data/compile_fitbit_data.py --compile --output my_data.parquet --data-dir /path/to/data
+
+# ============================================================================
+# DAILY UPDATES (LOW MEMORY - recommended for regular use)
+# ============================================================================
+cd data && python3 update_parquet_lowmem.py
+```
+
+**⚠️ Memory Warning:**
+- **`compile_fitbit_data.py --compile`**: Loads ALL files into memory simultaneously. With 59 days of data, this can use 2-4 GB of RAM. Only use for initial compilation.
+- **`compile_fitbit_data.py --update`**: Also loads all NEW files into memory. Will fail with OOM errors if you have many new files.
+- **`update_parquet_lowmem.py`**: Processes files one at a time. Always use this for daily updates to avoid memory issues.
+
+**How it works:**
+- **Full compilation** (`--compile`): Processes all `fitbit_backup_*.json.gz` files in the directory and creates a single Parquet file
+- **Incremental update** (`--update`): Adds only new daily files since the last compilation (much faster for daily updates)
+- Creates a state file (`compilation_state.json`) to track which dates have been processed
+- Outputs compressed Parquet format with snappy compression for efficient storage and fast loading
+
+**Benefits:**
+- **10-100x faster** than fetching individual files from S3
+- **Efficient storage** - Parquet uses columnar compression
+- **Perfect for time-series analysis** - all data pre-sorted by timestamp
+- **Easy filtering** - Pandas can quickly filter by measurement type or time range
+- **Used by notebooks** - PERFORMANCE ANALYSIS notebook loads from local Parquet for speed
+
+**Loading compiled data:**
+```python
+import pandas as pd
+
+# Load entire dataset
+df = pd.read_parquet('data/fitbit_compiled.parquet')
+
+# Filter by measurement type
+hr_data = df[df['measurement'] == 'HeartRate_Intraday']
+
+# Filter by date range
+mask = (df['time'] >= '2025-01-01') & (df['time'] <= '2025-01-31')
+january_data = df[mask]
+```
+
+**Automation tip:** Add `update_fitbit_data.sh` to your cron job to automatically update the compiled file after new data is collected:
+```bash
+# In crontab after fitbit2s3.py completes
+05 03 * * * cd /path/to/cromWell && ./update_fitbit_data.sh >> cromwell_cron.log 2>&1
+```
+
 <br>
 
 ## ⚙️ Timezone Handling
