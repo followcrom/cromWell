@@ -57,6 +57,53 @@ def get_fitbit_data_for_date(date_str):
         return None
 
 
+def convert_activity_distances_to_km(df_activities):
+    """
+    Convert ActivityRecords distances from miles to kilometers.
+
+    Fitbit API returns ALL activity distances in MILES (GPS, treadmill, swimming, etc.).
+    This function converts them to kilometers and recalculates pace/speed.
+
+    Args:
+        df_activities: DataFrame with ActivityRecords (can be from Parquet or S3)
+
+    Returns:
+        DataFrame with distances converted to km
+    """
+    if df_activities.empty or 'distance' not in df_activities.columns:
+        return df_activities
+
+    # Conversion constant
+    MILES_TO_KM = 1.609344
+
+    # Work on a copy to avoid modifying the original
+    df = df_activities.copy()
+
+    # Only convert if distance exists and is > 0
+    mask = (df['distance'].notna()) & (df['distance'] > 0)
+
+    if mask.any():
+        # Store original distance in miles
+        df.loc[mask, 'distance_miles'] = df.loc[mask, 'distance']
+
+        # Convert to kilometers
+        df.loc[mask, 'distance'] = df.loc[mask, 'distance'] * MILES_TO_KM
+
+        # Recalculate pace (seconds per km) with corrected distance
+        if 'duration' in df.columns:
+            duration_mask = mask & (df['duration'].notna())
+            duration_seconds = df.loc[duration_mask, 'duration'] / 1000  # duration is in milliseconds
+            df.loc[duration_mask, 'pace'] = duration_seconds / df.loc[duration_mask, 'distance']
+
+        # Recalculate speed (km/h) with corrected distance
+        if 'duration' in df.columns:
+            duration_mask = mask & (df['duration'].notna())
+            duration_hours = (df.loc[duration_mask, 'duration'] / 1000) / 3600
+            df.loc[duration_mask, 'speed'] = df.loc[duration_mask, 'distance'] / duration_hours
+
+    return df
+
+
 def parse_fitbit_data(data):
     """Parse the list of measurements into separate DataFrames by measurement type"""
 

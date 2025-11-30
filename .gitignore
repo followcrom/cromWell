@@ -37,3 +37,4 @@ __pycache__/
 fitbit_s3-2-local.sh
 run_fitbit2s3.sh
 .github/workflows/claude_s3.yml
+.github/workflows/claude_4.yml
