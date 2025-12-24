@@ -5,13 +5,7 @@
 cw_venv/
 
 # Data files
-logs/
-fitbit_data.log
-cromwell_daily.log
-cromwell_error.log
-cromwell_cron.log
-*.json.gz
-fitbit_compiled.parquet
+data/
 
 # Documentation
 docs/

@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
 """
-Compile daily Fitbit JSON.gz files into a single Parquet file for Pandas analysis.
+Compile daily Fitbit JSON.gz files into optimized  Parquet structure.
 Supports both full compilation and incremental updates.
+
+Creates:
+- heartrate_intraday/ (date-)
+- steps_intraday/ (date-)
+- gps.parquet
+- sleep_levels.parquet
+- daily_summaries.parquet
 """
 
 import gzip
@@ -10,6 +17,18 @@ import pandas as pd
 from pathlib import Path
 from datetime import datetime
 import argparse
+
+
+# Measurement categorization
+HIGH_FREQUENCY_INTRADAY = {
+    'HeartRate_Intraday': 'heartrate_intraday',
+    'Steps_Intraday': 'steps_intraday'
+}
+
+MODERATE_FREQUENCY = {
+    'GPS': 'gps.parquet',
+    'SleepLevels': 'sleep_levels.parquet'
+}
 
 
 def load_and_flatten_json_gz(file_path):
@@ -46,8 +65,125 @@ def get_date_from_filename(filename):
     return date_str
 
 
-def compile_all_files(data_dir='.', output_file='fitbit_compiled.parquet', state_file='compilation_state.json'):
-    """Compile all JSON.gz files into a single Parquet file."""
+def save__data(df, data_dir, timezone='Europe/London'):
+    """
+    Save DataFrame in optimized  structure.
+
+    Args:
+        df: DataFrame with all records
+        data_dir: Base directory for output
+        timezone: Timezone for date extraction
+    """
+    data_path = Path(data_dir)
+
+    # Ensure time is datetime with timezone
+    if not pd.api.types.is_datetime64_any_dtype(df['time']):
+        df['time'] = pd.to_datetime(df['time'], format='ISO8601')
+
+    if df['time'].dt.tz is None:
+        df['time'] = df['time'].dt.tz_localize('UTC')
+
+    # Add date column
+    df['date'] = df['time'].dt.tz_convert(timezone).dt.date
+    df['date'] = pd.to_datetime(df['date'])
+
+    print(f"\n💾 Saving data in  structure...")
+
+    # Track what we've processed
+    processed_measurements = set()
+
+    # ========================================================================
+    # 1. HIGH-FREQUENCY INTRADAY (date-)
+    # ========================================================================
+    for measurement, dir_name in HIGH_FREQUENCY_INTRADAY.items():
+        if measurement not in df['measurement'].values:
+            continue
+
+        df_subset = df[df['measurement'] == measurement].copy()
+        count = len(df_subset)
+
+        if count == 0:
+            continue
+
+        output_dir = data_path / dir_name
+
+        # Drop measurement column
+        df_subset = df_subset.drop(columns=['measurement'])
+
+        print(f"   📁 {measurement}: {count:,} records → {dir_name}/")
+
+        # Append to existing partitions
+        df_subset.to_parquet(
+            output_dir,
+            partition_cols=['date'],
+            index=False,
+            compression='snappy',
+            existing_data_behavior='overwrite_or_ignore'
+        )
+
+        processed_measurements.add(measurement)
+
+    # ========================================================================
+    # 2. MODERATE-FREQUENCY (single files, append mode)
+    # ========================================================================
+    for measurement, filename in MODERATE_FREQUENCY.items():
+        if measurement not in df['measurement'].values:
+            continue
+
+        df_subset = df[df['measurement'] == measurement].copy()
+        count = len(df_subset)
+
+        if count == 0:
+            continue
+
+        output_file = data_path / filename
+
+        # Drop measurement column
+        df_subset = df_subset.drop(columns=['measurement'])
+
+        print(f"   📄 {measurement}: {count:,} records → {filename}")
+
+        # Append or create
+        if output_file.exists():
+            df_existing = pd.read_parquet(output_file)
+            df_combined = pd.concat([df_existing, df_subset], ignore_index=True)
+            # Remove duplicates based on time
+            df_combined = df_combined.drop_duplicates(subset=['time'], keep='last')
+            df_combined.to_parquet(output_file, index=False, compression='snappy')
+        else:
+            df_subset.to_parquet(output_file, index=False, compression='snappy')
+
+        processed_measurements.add(measurement)
+
+    # ========================================================================
+    # 3. DAILY SUMMARIES (all remaining)
+    # ========================================================================
+    remaining_measurements = set(df['measurement'].unique()) - processed_measurements
+
+    if remaining_measurements:
+        df_daily = df[df['measurement'].isin(remaining_measurements)].copy()
+        count = len(df_daily)
+
+        output_file = data_path / 'daily_summaries.parquet'
+
+        print(f"   📊 Daily summaries: {count:,} records → daily_summaries.parquet")
+
+        # Keep measurement column
+        if output_file.exists():
+            df_existing = pd.read_parquet(output_file)
+            df_combined = pd.concat([df_existing, df_daily], ignore_index=True)
+            # Remove duplicates based on time and measurement
+            df_combined = df_combined.drop_duplicates(
+                subset=['time', 'measurement'],
+                keep='last'
+            )
+            df_combined.to_parquet(output_file, index=False, compression='snappy')
+        else:
+            df_daily.to_parquet(output_file, index=False, compression='snappy')
+
+
+def compile_all_files(data_dir='.', state_file='compilation_state.json'):
+    """Compile all JSON.gz files into  Parquet structure."""
     data_path = Path(data_dir)
     json_files = sorted(data_path.glob('fitbit_backup_*.json.gz'))
 
@@ -80,42 +216,32 @@ def compile_all_files(data_dir='.', output_file='fitbit_compiled.parquet', state
     print(f"\nCreating DataFrame with {len(all_records):,} records...")
     df = pd.DataFrame(all_records)
 
-    # Convert time to datetime (format='ISO8601' handles timestamps with/without microseconds)
-    df['time'] = pd.to_datetime(df['time'], format='ISO8601')
-
-    # Sort by time
-    df = df.sort_values('time').reset_index(drop=True)
-
-    # Save to Parquet
-    output_path = data_path / output_file
-    print(f"Saving to {output_path}...")
-    df.to_parquet(output_path, index=False, compression='snappy')
+    # Save in  structure
+    save__data(df, data_dir)
 
     # Save state file
     state = {
         'last_updated': datetime.now().isoformat(),
         'total_records': len(all_records),
         'processed_dates': processed_dates,
-        'latest_date': max(processed_dates) if processed_dates else None
+        'latest_date': max(processed_dates) if processed_dates else None,
+        'structure_version': '_v1'
     }
     state_path = data_path / state_file
     with open(state_path, 'w') as f:
         json.dump(state, f, indent=2)
 
-    print(f"\n✓ Compilation complete!")
+    print(f"\n✅ Compilation complete!")
     print(f"  Total records: {len(all_records):,}")
     print(f"  Date range: {min(processed_dates)} to {max(processed_dates)}")
-    print(f"  Output file: {output_path}")
-    print(f"  File size: {output_path.stat().st_size / 1024 / 1024:.1f} MB")
     print(f"  State file: {state_path}")
 
     return df
 
 
-def update_incremental(data_dir='.', output_file='fitbit_compiled.parquet', state_file='compilation_state.json'):
-    """Update the compiled file with new daily files only."""
+def update_incremental(data_dir='.', state_file='compilation_state.json'):
+    """Update the  files with new daily files only."""
     data_path = Path(data_dir)
-    output_path = data_path / output_file
     state_path = data_path / state_file
 
     # Load existing state
@@ -162,47 +288,34 @@ def update_incremental(data_dir='.', output_file='fitbit_compiled.parquet', stat
         print("No new records found")
         return
 
-    # Load existing DataFrame
-    print(f"\nLoading existing Parquet file...")
-    existing_df = pd.read_parquet(output_path)
-    print(f"  Existing records: {len(existing_df):,}")
-
-    # Create new DataFrame
-    print(f"Creating DataFrame with {len(new_records):,} new records...")
+    # Create DataFrame from new records
+    print(f"\nCreating DataFrame with {len(new_records):,} new records...")
     new_df = pd.DataFrame(new_records)
-    new_df['time'] = pd.to_datetime(new_df['time'], format='ISO8601')
 
-    # Combine and sort
-    print("Combining and sorting...")
-    combined_df = pd.concat([existing_df, new_df], ignore_index=True)
-    combined_df = combined_df.sort_values('time').reset_index(drop=True)
-
-    # Save updated Parquet
-    print(f"Saving updated file to {output_path}...")
-    combined_df.to_parquet(output_path, index=False, compression='snappy')
+    # Save in  structure
+    save__data(new_df, data_dir)
 
     # Update state
     state['last_updated'] = datetime.now().isoformat()
-    state['total_records'] = len(combined_df)
+    state['total_records'] = state['total_records'] + len(new_records)
     state['processed_dates'].extend(new_dates)
     state['latest_date'] = max(state['processed_dates'])
 
     with open(state_path, 'w') as f:
         json.dump(state, f, indent=2)
 
-    print(f"\n✓ Incremental update complete!")
+    print(f"\n✅ Incremental update complete!")
     print(f"  New records added: {len(new_records):,}")
-    print(f"  Total records: {len(combined_df):,}")
+    print(f"  Total records: {state['total_records']:,}")
     print(f"  New date range: {min(new_dates)} to {max(new_dates)}")
     print(f"  Overall date range: {min(state['processed_dates'])} to {max(state['processed_dates'])}")
-    print(f"  File size: {output_path.stat().st_size / 1024 / 1024:.1f} MB")
 
-    return combined_df
+    return new_df
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Compile Fitbit daily JSON.gz files into Parquet format',
+        description='Compile Fitbit daily JSON.gz files into  Parquet format',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -212,30 +325,25 @@ Examples:
   # Incremental update (add only new files)
   python compile_fitbit_data.py --update
 
-  # Custom output file
-  python compile_fitbit_data.py --compile --output my_fitbit_data.parquet
+  # Custom data directory
+  python compile_fitbit_data.py --compile --data-dir /path/to/data
         """
     )
 
     parser.add_argument(
         '--compile',
         action='store_true',
-        help='Compile all JSON.gz files into a single Parquet file'
+        help='Compile all JSON.gz files into  Parquet structure'
     )
     parser.add_argument(
         '--update',
         action='store_true',
-        help='Update existing Parquet file with new daily files only'
+        help='Update existing  structure with new daily files only'
     )
     parser.add_argument(
         '--data-dir',
         default='.',
         help='Directory containing JSON.gz files (default: current directory)'
-    )
-    parser.add_argument(
-        '--output',
-        default='fitbit_compiled.parquet',
-        help='Output Parquet filename (default: fitbit_compiled.parquet)'
     )
     parser.add_argument(
         '--state-file',
@@ -254,13 +362,11 @@ Examples:
     if args.compile:
         compile_all_files(
             data_dir=args.data_dir,
-            output_file=args.output,
             state_file=args.state_file
         )
     elif args.update:
         update_incremental(
             data_dir=args.data_dir,
-            output_file=args.output,
             state_file=args.state_file
         )
 
