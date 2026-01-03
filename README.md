@@ -363,44 +363,6 @@ The notebook-based approach provides more flexibility than static dashboards and
 
 ---
 
-## 🆕 Recent Updates
-
-### December 2025 -  Parquet Structure
-- **Massive performance improvement**: 99% memory reduction, 50x faster loading
-- **New  structure**: Organizes data by date for efficient access
-- **Smart S3 sync**: Downloads only new files you don't have
-- **No sorting required**: Data is pre-organized by date partitions
-- **Backwards compatible**: Existing notebooks work without changes
-- **Files**: Use `update_fitbit_data_.sh` for daily updates
-- See `data/README_.md` for detailed migration guide
-
-### January 2025 - Migration to S3 Storage
-- **Migrated from InfluxDB to AWS S3** for better data persistence and portability
-- Renamed scripts: `fitbit2influx.py` → `fitbit2s3.py`
-- Implemented gzipped JSON backups for efficient storage
-- Updated notebooks to fetch data directly from S3 using boto3
-
-### SLEEP-CLAUDE.ipynb Error Handling Improvements
-- **Added robust error handling** for dates with missing sleep data
-- **Graceful fallbacks** when `SleepLevels` or `SleepSummary` data is unavailable
-- **Conditional processing** - all data processing cells now check if data exists before attempting operations
-- **Prevents NoneType errors** by validating data existence throughout the workflow
-- **User-friendly messages** when no sleep data is found for a specific date
-
-**Example:**
-```python
-# Before (would crash)
-df_sleep_levels['end_time'] = df_sleep_levels['time'] + ...
-
-# After (gracefully handles missing data)
-if df_sleep_levels is not None:
-    df_sleep_levels['end_time'] = df_sleep_levels['time'] + ...
-else:
-    print("⚠️  Skipping processing - no sleep data available for this date")
-```
-
----
-
 ## 📅 Commit Activity 🕹️
 
 ![GitHub last commit](https://img.shields.io/github/last-commit/followcrom/cromWell/S3)
