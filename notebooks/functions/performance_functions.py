@@ -20,10 +20,10 @@ import warnings
 
 # Heart rate zones (user-specific - ideally calculated from age/max HR)
 DEFAULT_HR_ZONES = {
-    'Out of Range': {'range': (0, 93), 'color': '#e8f4f8'},
-    'Fat Burn': {'range': (93, 128), 'color': '#fff4e6'},
-    'Cardio': {'range': (128, 155), 'color': '#ffe8e8'},
-    'Peak': {'range': (155, 220), 'color': '#ffe0e0'}
+    'Out of Range': {'range': (0, 97), 'color': '#808080'},      # Grey
+    'Fat Burn': {'range': (98, 122), 'color': '#F5A623'},        # Yellow/Orange
+    'Cardio': {'range': (123, 154), 'color': '#FF6B35'},         # Orange
+    'Peak': {'range': (155, 220), 'color': '#D0021B'}            # Red
 }
 
 # Plotting configuration
@@ -195,229 +195,229 @@ def convert_timezone_safe(
 # Plotting Functions
 # ============================================================================
 
-def plot_performance_timeline(
-    df_hr_intra: pd.DataFrame,
-    df_steps_intra: pd.DataFrame,
-    activity_record: pd.Series,
-    hr_zones: Optional[Dict] = None,
-    config: Optional[Dict] = None,
-    timezone: str = 'Europe/London'
-) -> plt.Figure:
-    """
-    Create a detailed performance timeline for a workout session.
+# def plot_performance_timeline(
+#     df_hr_intra: pd.DataFrame,
+#     df_steps_intra: pd.DataFrame,
+#     activity_record: pd.Series,
+#     hr_zones: Optional[Dict] = None,
+#     config: Optional[Dict] = None,
+#     timezone: str = 'Europe/London'
+# ) -> plt.Figure:
+#     """
+#     Create a detailed performance timeline for a workout session.
 
-    Shows 3 panels:
-    1. Heart rate with zone coloring and averages
-    2. Steps/activity intensity
-    3. Workout metrics summary
+#     Shows 3 panels:
+#     1. Heart rate with zone coloring and averages
+#     2. Steps/activity intensity
+#     3. Workout metrics summary
 
-    Parameters:
-    - df_hr_intra: Intraday heart rate DataFrame
-    - df_steps_intra: Intraday steps DataFrame
-    - activity_record: Single activity record (Series or single-row DataFrame)
-    - hr_zones: Heart rate zones dict (default: DEFAULT_HR_ZONES)
-    - config: Plotting configuration (default: PLOT_CONFIG)
-    - timezone: Display timezone (default: 'Europe/London')
+#     Parameters:
+#     - df_hr_intra: Intraday heart rate DataFrame
+#     - df_steps_intra: Intraday steps DataFrame
+#     - activity_record: Single activity record (Series or single-row DataFrame)
+#     - hr_zones: Heart rate zones dict (default: DEFAULT_HR_ZONES)
+#     - config: Plotting configuration (default: PLOT_CONFIG)
+#     - timezone: Display timezone (default: 'Europe/London')
 
-    Returns:
-    - Matplotlib figure
-    """
-    # Handle defaults
-    if hr_zones is None:
-        hr_zones = DEFAULT_HR_ZONES
-    if config is None:
-        config = PLOT_CONFIG
+#     Returns:
+#     - Matplotlib figure
+#     """
+#     # Handle defaults
+#     if hr_zones is None:
+#         hr_zones = DEFAULT_HR_ZONES
+#     if config is None:
+#         config = PLOT_CONFIG
 
-    # Extract activity record if DataFrame
-    if isinstance(activity_record, pd.DataFrame):
-        if len(activity_record) == 0:
-            raise ValueError("Activity record DataFrame is empty")
-        activity_record = activity_record.iloc[0]
+#     # Extract activity record if DataFrame
+#     if isinstance(activity_record, pd.DataFrame):
+#         if len(activity_record) == 0:
+#             raise ValueError("Activity record DataFrame is empty")
+#         activity_record = activity_record.iloc[0]
 
-    # Validate inputs
-    validate_dataframes(df_hr_intra, df_steps_intra, activity_record)
+#     # Validate inputs
+#     validate_dataframes(df_hr_intra, df_steps_intra, activity_record)
 
-    # Convert data to target timezone
-    df_hr_intra = convert_timezone_safe(df_hr_intra, target_tz=timezone)
-    if not df_steps_intra.empty:
-        df_steps_intra = convert_timezone_safe(df_steps_intra, target_tz=timezone)
+#     # Convert data to target timezone
+#     df_hr_intra = convert_timezone_safe(df_hr_intra, target_tz=timezone)
+#     if not df_steps_intra.empty:
+#         df_steps_intra = convert_timezone_safe(df_steps_intra, target_tz=timezone)
 
-    # Extract activity time window
-    activity_start, activity_end, activity_duration = extract_activity_time_window(
-        activity_record, timezone
-    )
+#     # Extract activity time window
+#     activity_start, activity_end, activity_duration = extract_activity_time_window(
+#         activity_record, timezone
+#     )
 
-    # Add buffer time for context
-    buffer = pd.Timedelta(minutes=config['buffer_minutes'])
-    plot_start = activity_start - buffer
-    plot_end = activity_end + buffer
+#     # Add buffer time for context
+#     buffer = pd.Timedelta(minutes=config['buffer_minutes'])
+#     plot_start = activity_start - buffer
+#     plot_end = activity_end + buffer
 
-    # Filter data to workout window + buffer
-    hr_window = df_hr_intra[
-        (df_hr_intra['time'] >= plot_start) &
-        (df_hr_intra['time'] <= plot_end)
-    ].copy()
+#     # Filter data to workout window + buffer
+#     hr_window = df_hr_intra[
+#         (df_hr_intra['time'] >= plot_start) &
+#         (df_hr_intra['time'] <= plot_end)
+#     ].copy()
 
-    steps_window = pd.DataFrame()
-    if not df_steps_intra.empty:
-        steps_window = df_steps_intra[
-            (df_steps_intra['time'] >= plot_start) &
-            (df_steps_intra['time'] <= plot_end)
-        ].copy()
+#     steps_window = pd.DataFrame()
+#     if not df_steps_intra.empty:
+#         steps_window = df_steps_intra[
+#             (df_steps_intra['time'] >= plot_start) &
+#             (df_steps_intra['time'] <= plot_end)
+#         ].copy()
 
-    if hr_window.empty:
-        raise ValueError(f"No heart rate data found in window {plot_start} to {plot_end}")
+#     if hr_window.empty:
+#         raise ValueError(f"No heart rate data found in window {plot_start} to {plot_end}")
 
-    # Create figure with 3 subplots
-    fig, (ax1, ax2, ax3) = plt.subplots(
-        3, 1, figsize=(14, 10),
-        sharex=True,
-        gridspec_kw={'height_ratios': [2, 1.5, 1]}
-    )
+#     # Create figure with 3 subplots
+#     fig, (ax1, ax2, ax3) = plt.subplots(
+#         3, 1, figsize=(14, 10),
+#         sharex=True,
+#         gridspec_kw={'height_ratios': [2, 1.5, 1]}
+#     )
 
-    # ========================================================================
-    # Panel 1: Heart Rate with Zones
-    # ========================================================================
+#     # ========================================================================
+#     # Panel 1: Heart Rate with Zones
+#     # ========================================================================
 
-    # Plot zone bands
-    for zone_name, zone_info in hr_zones.items():
-        ax1.axhspan(
-            zone_info['range'][0], zone_info['range'][1],
-            alpha=0.2, color=zone_info['color'], label=zone_name
-        )
+#     # Plot zone bands
+#     for zone_name, zone_info in hr_zones.items():
+#         ax1.axhspan(
+#             zone_info['range'][0], zone_info['range'][1],
+#             alpha=0.2, color=zone_info['color'], label=zone_name
+#         )
 
-    # Highlight workout period
-    ax1.axvspan(
-        activity_start, activity_end,
-        alpha=0.1, color='green', label='Workout Period', zorder=1
-    )
+#     # Highlight workout period
+#     ax1.axvspan(
+#         activity_start, activity_end,
+#         alpha=0.1, color='green', label='Workout Period', zorder=1
+#     )
 
-    # Plot heart rate
-    ax1.plot(
-        hr_window['time'], hr_window['value'],
-        color='#ff4444', linewidth=2, label='Heart Rate', zorder=5
-    )
+#     # Plot heart rate
+#     ax1.plot(
+#         hr_window['time'], hr_window['value'],
+#         color='#ff4444', linewidth=2, label='Heart Rate', zorder=5
+#     )
 
-    # Add average HR line for workout period
-    hr_workout = hr_window[
-        (hr_window['time'] >= activity_start) &
-        (hr_window['time'] <= activity_end)
-    ]
+#     # Add average HR line for workout period
+#     hr_workout = hr_window[
+#         (hr_window['time'] >= activity_start) &
+#         (hr_window['time'] <= activity_end)
+#     ]
 
-    if not hr_workout.empty:
-        avg_hr = hr_workout['value'].mean()
-        ax1.axhline(
-            avg_hr, color='darkred', linestyle='--',
-            linewidth=2, alpha=0.7,
-            label=f'Avg HR: {avg_hr:.0f} bpm', zorder=4
-        )
+#     if not hr_workout.empty:
+#         avg_hr = hr_workout['value'].mean()
+#         ax1.axhline(
+#             avg_hr, color='darkred', linestyle='--',
+#             linewidth=2, alpha=0.7,
+#             label=f'Avg HR: {avg_hr:.0f} bpm', zorder=4
+#         )
 
-    # Add activity average HR from record (if available)
-    if pd.notna(activity_record.get('averageHeartRate')):
-        recorded_avg = activity_record['averageHeartRate']
-        ax1.axhline(
-            recorded_avg, color='purple', linestyle=':',
-            linewidth=2, alpha=0.7,
-            label=f'Recorded Avg: {recorded_avg:.0f} bpm', zorder=4
-        )
+#     # Add activity average HR from record (if available)
+#     if pd.notna(activity_record.get('averageHeartRate')):
+#         recorded_avg = activity_record['averageHeartRate']
+#         ax1.axhline(
+#             recorded_avg, color='purple', linestyle=':',
+#             linewidth=2, alpha=0.7,
+#             label=f'Recorded Avg: {recorded_avg:.0f} bpm', zorder=4
+#         )
 
-    ax1.set_ylabel('Heart Rate (bpm)', fontsize=11, fontweight='bold')
-    ax1.set_title(
-        f'Workout Performance Analysis - {activity_record["ActivityName"]}',
-        fontsize=14, fontweight='bold'
-    )
-    ax1.grid(True, alpha=0.3, linestyle='--')
-    ax1.legend(loc='upper left', fontsize=9, ncol=2)
+#     ax1.set_ylabel('Heart Rate (bpm)', fontsize=11, fontweight='bold')
+#     ax1.set_title(
+#         f'Workout Performance Analysis - {activity_record["ActivityName"]}',
+#         fontsize=14, fontweight='bold'
+#     )
+#     ax1.grid(True, alpha=0.3, linestyle='--')
+#     ax1.legend(loc='upper left', fontsize=9, ncol=2)
 
-    # ========================================================================
-    # Panel 2: Steps/Activity Intensity
-    # ========================================================================
+#     # ========================================================================
+#     # Panel 2: Steps/Activity Intensity
+#     # ========================================================================
 
-    # Plot steps as bar chart
-    if not steps_window.empty:
-        ax2.bar(
-            steps_window['time'], steps_window['value'],
-            width=config['steps_bar_width'],
-            color='#4a90e2', alpha=0.7, label='Steps per Minute'
-        )
-        ax2.legend(loc='upper left', fontsize=9)
-    else:
-        ax2.text(
-            0.5, 0.5, 'No step data available',
-            transform=ax2.transAxes, ha='center', va='center',
-            fontsize=12, color='gray'
-        )
+#     # Plot steps as bar chart
+#     if not steps_window.empty:
+#         ax2.bar(
+#             steps_window['time'], steps_window['value'],
+#             width=config['steps_bar_width'],
+#             color='#4a90e2', alpha=0.7, label='Steps per Minute'
+#         )
+#         ax2.legend(loc='upper left', fontsize=9)
+#     else:
+#         ax2.text(
+#             0.5, 0.5, 'No step data available',
+#             transform=ax2.transAxes, ha='center', va='center',
+#             fontsize=12, color='gray'
+#         )
 
-    ax2.set_ylabel('Steps/min', fontsize=11, fontweight='bold')
-    ax2.grid(True, alpha=0.3, linestyle='--', axis='y')
+#     ax2.set_ylabel('Steps/min', fontsize=11, fontweight='bold')
+#     ax2.grid(True, alpha=0.3, linestyle='--', axis='y')
 
-    # ========================================================================
-    # Panel 3: Workout Metrics Summary
-    # ========================================================================
+#     # ========================================================================
+#     # Panel 3: Workout Metrics Summary
+#     # ========================================================================
 
-    # Hide axes for metric display
-    ax3.axis('off')
+#     # Hide axes for metric display
+#     ax3.axis('off')
 
-    # Create metrics display
-    metrics = []
-    metrics.append(f"Activity: {activity_record['ActivityName']}")
-    metrics.append(f"Duration: {activity_duration:.1f} min")
+#     # Create metrics display
+#     metrics = []
+#     metrics.append(f"Activity: {activity_record['ActivityName']}")
+#     metrics.append(f"Duration: {activity_duration:.1f} min")
 
-    if pd.notna(activity_record.get('calories')):
-        metrics.append(f"Calories: {activity_record['calories']:.0f} kcal")
+#     if pd.notna(activity_record.get('calories')):
+#         metrics.append(f"Calories: {activity_record['calories']:.0f} kcal")
 
-    if pd.notna(activity_record.get('distance')):
-        metrics.append(f"Distance: {activity_record['distance']:.2f} km")
+#     if pd.notna(activity_record.get('distance')):
+#         metrics.append(f"Distance: {activity_record['distance']:.2f} km")
 
-    if pd.notna(activity_record.get('steps')):
-        metrics.append(f"Steps: {activity_record['steps']:.0f}")
+#     if pd.notna(activity_record.get('steps')):
+#         metrics.append(f"Steps: {activity_record['steps']:.0f}")
 
-    if pd.notna(activity_record.get('pace')):
-        # Convert pace from ms to min/km
-        pace_min_km = activity_record['pace'] / 60000
-        metrics.append(f"Pace: {pace_min_km:.2f} min/km")
+#     if pd.notna(activity_record.get('pace')):
+#         # Convert pace from ms to min/km
+#         pace_min_km = activity_record['pace'] / 60000
+#         metrics.append(f"Pace: {pace_min_km:.2f} min/km")
 
-    if pd.notna(activity_record.get('speed')):
-        metrics.append(f"Speed: {activity_record['speed']:.2f} km/h")
+#     if pd.notna(activity_record.get('speed')):
+#         metrics.append(f"Speed: {activity_record['speed']:.2f} km/h")
 
-    if pd.notna(activity_record.get('elevationGain')):
-        metrics.append(f"Elevation: {activity_record['elevationGain']:.0f} m")
+#     if pd.notna(activity_record.get('elevationGain')):
+#         metrics.append(f"Elevation: {activity_record['elevationGain']:.0f} m")
 
-    # Display metrics in a grid
-    metrics_text = "  |  ".join(metrics)
-    ax3.text(
-        0.5, 0.5, metrics_text,
-        transform=ax3.transAxes,
-        fontsize=11,
-        ha='center', va='center',
-        bbox=dict(
-            boxstyle='round,pad=1',
-            facecolor='lightblue',
-            alpha=0.3,
-            edgecolor='steelblue',
-            linewidth=2
-        )
-    )
+#     # Display metrics in a grid
+#     metrics_text = "  |  ".join(metrics)
+#     ax3.text(
+#         0.5, 0.5, metrics_text,
+#         transform=ax3.transAxes,
+#         fontsize=11,
+#         ha='center', va='center',
+#         bbox=dict(
+#             boxstyle='round,pad=1',
+#             facecolor='lightblue',
+#             alpha=0.3,
+#             edgecolor='steelblue',
+#             linewidth=2
+#         )
+#     )
 
-    # ========================================================================
-    # Formatting
-    # ========================================================================
+#     # ========================================================================
+#     # Formatting
+#     # ========================================================================
 
-    # Format x-axis with time labels - FIXED BUG
-    for ax in [ax1, ax2]:
-        ax.xaxis.set_major_formatter(
-            mdates.DateFormatter(config['time_format'], tz=timezone)
-        )
-        ax.xaxis.set_major_locator(
-            mdates.MinuteLocator(interval=config['detail_interval_minutes'])
-        )
-        ax.tick_params(axis='x', which='both', bottom=True, top=False, labelbottom=True)
+#     # Format x-axis with time labels - FIXED BUG
+#     for ax in [ax1, ax2]:
+#         ax.xaxis.set_major_formatter(
+#             mdates.DateFormatter(config['time_format'], tz=timezone)
+#         )
+#         ax.xaxis.set_major_locator(
+#             mdates.MinuteLocator(interval=config['detail_interval_minutes'])
+#         )
+#         ax.tick_params(axis='x', which='both', bottom=True, top=False, labelbottom=True)
 
-    ax2.set_xlabel('Time', fontsize=11, fontweight='bold')
-    plt.setp(ax2.xaxis.get_majorticklabels(), rotation=45, ha='right')
+#     ax2.set_xlabel('Time', fontsize=11, fontweight='bold')
+#     plt.setp(ax2.xaxis.get_majorticklabels(), rotation=45, ha='right')
 
-    plt.tight_layout()
-    return fig
+#     plt.tight_layout()
+#     return fig
 
 
 def plot_full_day_with_workout_highlight(
