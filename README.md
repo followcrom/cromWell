@@ -22,7 +22,7 @@ https://support.google.com/fitbit/#topic=14236398
 
 2. **Cloud Backup** - Data is compressed (gzip) and uploaded to AWS S3
 
-3. **Local Processing** - Use `data_tools/sync_from_s3.py` to download and convert JSON to Parquet format
+3. **Local Processing** - Use `data_tools/update_fitbit_data.sh` to download and convert JSON to Parquet format
 
 4. **Analysis** - Open Jupyter notebooks for exploratory data analysis and visualization
 
