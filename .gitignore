@@ -22,8 +22,5 @@ tokens.json
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
 
-# Jupyter Notebooks
-*.ipynb
-
 # Ignore Python cache files
 __pycache__/
