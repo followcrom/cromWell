@@ -10,10 +10,6 @@ https://dev.fitbit.com/build/reference/web-api/
 
 https://support.google.com/fitbit/#topic=14236398
 
-##  🖼️ Grafana Visualization
-
-📊 [Dashboard](https://followcrom.grafana.net/d/97b9809e-408a-4f96-8f92-333e7167d952/cromwell-s-fitbit-board)
-
 
 ## 🛠️ Local EDA
 
