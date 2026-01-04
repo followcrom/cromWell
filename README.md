@@ -1,6 +1,6 @@
 # 🏃‍♂️ CromWell 🍋🥝🍌🍐🥥🍈
 
-Pull Fitbit health data into InfluxDB and visualize it with Grafana. All automated via a cron job that runs once a day. It’s your personal observability pipeline! 🚀
+Fetch and analyze your Fitbit health data. The project automatically pulls data from the Fitbit API, backs it up to AWS S3 as gzipped JSON, and processes it into Parquet format for efficient analysis with Jupyter notebooks. All automated via a cron job that runs once a day. It's your personal health data pipeline! 🚀
 
 ### Fitbit Web API Reference
 
@@ -10,6 +10,21 @@ https://dev.fitbit.com/build/reference/web-api/
 
 https://support.google.com/fitbit/#topic=14236398
 
+
+## 🚀 Workflow
+
+1. **Data Collection** - The `fitbit2s3.py` script runs daily via cron, fetching:
+   - Heart rate (daily summary and intraday)
+   - Sleep data (levels, stages, and summaries)
+   - Steps (daily and intraday)
+   - Activities and GPS data
+   - Daily summary metrics
+
+2. **Cloud Backup** - Data is compressed (gzip) and uploaded to AWS S3
+
+3. **Local Processing** - Use `data_tools/sync_from_s3.py` to download and convert JSON to Parquet format
+
+4. **Analysis** - Open Jupyter notebooks for exploratory data analysis and visualization
 
 ## 🛠️ Local EDA
 
@@ -24,31 +39,8 @@ jupyter lab
 
 ```bash
 jupyter lab --version
-
 pip install --upgrade jupyterlab
 ```
-
-## On the dobox
-
-```bash
-chmod 755 run_fitbit2influx.sh
-chown root:root run_fitbit2influx.sh
-```
-
-## 📦 Project Overview
-
-`fitbit2influx.py` is a Python script that:
-
-✅ Authenticates with the Fitbit API  
-📥 Pulls detailed health metrics (sleep, activity, HR, SpO₂, etc.)  
-🛢 Stores that data in InfluxDB  
-📈 Feeds your Grafana dashboards with up-to-date personal metrics  
-
-`run_fitbit2influx.sh` is a shell script that:
-
-📬 Sends an email alert if anything goes wrong
-
----
 
 ## 🐍 Create Virtual Environment
 
@@ -58,130 +50,84 @@ source cw_venv/bin/activate
 pip install -r requirements.txt  
 ```
 
-## 🔐 Fitbit API Credentials
+## 🔐 Configuration
+
+### Fitbit API Credentials
 Make sure you've registered an app on the Fitbit developer portal and have:
 
-- client_id
-- client_secret
-- A valid access token (or refresh logic)
+- `CLIENT_ID` - Your Fitbit app client ID
+- `CLIENT_SECRET` - Your Fitbit app client secret
+- `TOKEN_FILE_PATH` - Path to store access/refresh tokens
+- `FITBIT_LANGUAGE` - Language setting (default: en_US)
+- `DEVICENAME` - Your Fitbit device name (e.g., PixelWatch3)
 
-These should be stored securely in a .env file or secure vault, loaded by the script.
+### AWS S3 Configuration
+Configure AWS credentials for S3 backup:
+
+- `AWS_ACCESS_KEY_ID` - Your AWS access key
+- `AWS_SECRET_ACCESS_KEY` - Your AWS secret key
+- `S3_BUCKET_NAME` - S3 bucket for data storage
+- `AWS_REGION` - AWS region (if needed)
+
+### Logging
+- `FITBIT_LOG_FILE_PATH` - Path for log file output
+
+All credentials should be stored securely in a `.env` file (not committed to git).
+
+## 🖥️ Server Deployment
+
+On the server (dobox), set proper permissions:
+
+```bash
+chmod 755 run_fitbit2s3.sh
+chown root:root run_fitbit2s3.sh
+```
+
+The script includes email notifications on failures and comprehensive error logging.
 
 ## 📁 Project Structure
 
 ```
-cromwell/
-├── fitbit2influx.py        # Main Python script
-├── run_fitbit2influx.sh    # Shell wrapper for running the script with logging and error handling
-├── cw_venv/                # Python virtual environment
-├── data/                   # JSON data files
-├── fitbit_data.log         # Log file for Fitbit data
-├── cromwell_cron.log       # Log file for cron job execution
-├── requirements.txt        # Python dependencies
-├── .env                    # Environment variables for configuration
-├── .gitignore              # Git ignore file
-└── README.md
+cromWell/
+├── fitbit2s3.py              # Main script to fetch Fitbit data and upload to S3
+├── run_fitbit2s3.sh          # Cron job wrapper script with error handling
+├── requirements.txt          # Python dependencies
+├── data/                     # Local Parquet data storage
+│   ├── daily_summaries.parquet
+│   ├── gps.parquet
+│   ├── sleep_levels.parquet
+│   ├── heartrate_intraday/   # Intraday heart rate data
+│   └── steps_intraday/       # Intraday steps data
+├── data_tools/               # Data management utilities
+│   ├── split_parquet.py      # Split large Parquet files
+│   ├── sync_from_s3.py       # Sync data from S3 to local
+│   ├── update_parquet_lowmem.py  # Memory-efficient incremental updates
+│   └── update_fitbit_data.sh # Update script
+├── notebooks/                # Jupyter notebooks for analysis
+│   ├── SLEEP_ANALYSIS.ipynb  # Sleep data analysis
+│   ├── Activities_Refine.ipynb
+│   ├── Sleep_Redux.ipynb
+│   └── functions/            # Helper functions for notebooks
+│       ├── load_data.py      # Data loading utilities
+│       └── sleep/            # Sleep analysis helpers
+│           └── sleep_helpers.py
+└── docs/                     # Documentation files
+    ├── fitbit-tokens.txt
+    └── sleep-values.txt
 ```
 
-## InfluxDB
+## ✨ Key Features
 
-```bash
-influx bucket list
-```
+- **Automated Data Collection**: Daily cron job fetches data from Fitbit API
+- **Cloud Backup**: Gzipped JSON files stored in AWS S3
+- **Efficient Storage**: Parquet format for fast querying and analysis
+- **Memory-Efficient Updates**: Incremental data updates without loading entire datasets
+- **Comprehensive Analysis**: Jupyter notebooks for sleep, activity, and health metrics
+- **Error Handling**: Email notifications on job failures
 
-List Measurements:
+## 🔧 Data Tools
 
-```bash
-influx query 'import "influxdata/influxdb/schema"
-  schema.measurements(bucket: "cromwell-fitbit-2")'
-```
-
-List Tag Keys:
-
-Tags are key-value pairs that store metadata and are indexed for fast querying. To see all the tag keys for a specific measurement:
-
-```bash
-influx query 'import "influxdata/influxdb/schema"
-schema.measurementTagKeys(
-bucket: "cromwell-fitbit-2",
-measurement: "HRV"
-)'
-```
-
-List Field Keys:
-
-Fields are the key-value pairs that store your actual time series data (e.g., temperature, pressure). Unlike tags, fields are not indexed. To see the field keys for a measurement:
-
-```bash
-influx query 'import "influxdata/influxdb/schema"
-  schema.measurementFieldKeys(
-    bucket: "cromwell-fitbit-2",
-    measurement: "HRV"
-  )'
-```
-
-List Series:
-
-A series is a unique combination of measurement, tag set, and field key. To see all series in a bucket:
-
-```bash
-influx query 'from(bucket: "cromwell-fitbit-2") |> range(start: -1d) |> filter(fn: (r) => r._measurement == "HeartRate_Intraday") |> sort(columns: ["_time"]) |> limit(n: 200)'
-```
-
-
-### Query Bounds vs. Data Timestamp 📚
-
-When you run a query in InfluxDB, you often specify a time range using the `range(start: -7d)` function. This tells InfluxDB to return data points within the last 7 days.
-
-The `_start` and `_stop` columns are ephemeral metadata generated by InfluxDB's query engine every time you run a query. They exist only in the query results to give you context about the time window that was searched.
-
-The only time-related column that is permanently stored in the database alongside your values is the `_time` column.
-
-To put it simply:
-
-- **Stored in the Database**: _time, _measurement, _field, _value, and any tags you have (e.g., Device).
-
-- **Generated by each Query**: _start, _stop, and other metadata columns like table.
-
-<br>
-
-## Issues
-
-BST = UTC+1 - The Solution
-
-Instead of using midnight (00:00:00), I use noon (12:00:00) in your local timezone. Why noon? Because noon BST (12:00:00+01:00) converts to 11:00:00 UTC - still on the correct date!
-
-- Before: 2025-08-02T23:00:00+00:00 ❌ (wrong date)
-- After: 2025-08-03T11:00:00+00:00 ✅ (correct date)
-
-Many data systems do this - assign canonical timestamps to daily aggregates.
-
-Example Timeline:
-
-- August 3rd: You live your day, Fitbit tracks everything
-- August 4th 3:00 AM: Script runs and collects yesterday's data
-- August 4th 3:05 AM: Data gets written to InfluxDB with timestamp "August 3rd 11:00 AM UTC"
-
-<br>
-
-## Grafana Dashboard
-
-Activites Overview:
-
-Configure the Columns (The Magic Part ✨):
-This is where you add the bar gauges. You'll use the Overrides tab on the right-hand panel. You need to create an override for each activity column.
-
-For your "Walk" column:
-
-Go to the Overrides tab and click "Add field override".
-
-Select Fields with name. From the dropdown, choose Walk.
-
-Click "+ Add override property" and select "Standard options -> Unit. From the dropdown, search for and select Time > minutes (min).
-
-Click "+ Add override property" again and select Cell optins -> Cell type. From the dropdown, choose Gauge.
-
-You can then customize the gauge's appearance. I have been using "Retro LCD" & "Value color".
+The `data_tools/` directory contains utilities for managing your Fitbit data.
 
 ## 📅 Commit Activity 🕹️
 

@@ -9,6 +9,14 @@ import pandas as pd
 
 TIMEZONE = 'Europe/London'
 
+def get_ordinal_suffix(day):
+    """Get ordinal suffix for a day number (st, nd, rd, th)."""
+    if 10 <= day % 100 <= 20:
+        suffix = 'th'
+    else:
+        suffix = {1: 'st', 2: 'nd', 3: 'rd'}.get(day % 10, 'th')
+    return suffix
+
 # Color scheme for sleep stages
 SLEEP_COLORS = {
     'Deep': '#0f172a',      # Midnight Navy
@@ -208,7 +216,9 @@ def add_sleep_legend(ax, location='upper right'):
     ax.legend(handles=legend_elements, loc=location, ncol=4, fontsize=11, framealpha=0.9)
 
 
-def plot_sleep_timeline(df_levels, df_summary):
+# ===== Plots =====
+
+def plot_sleep_timeline(df_levels, df_summary, formatted_date=None):
     """Plot horizontal timeline showing sleep stages for a single day (28-hour window: 20:00 previous day to midnight next day)."""
     if df_levels.empty or df_summary.empty:
         print(f"❌ No sleep data found")
@@ -219,7 +229,7 @@ def plot_sleep_timeline(df_levels, df_summary):
         main_sleep = df_summary.iloc[[0]]
 
     main_sleep_start = main_sleep.iloc[0]['time']
-    
+
     main_sleep_end = (
         main_sleep.iloc[0].get("endTime") or
         main_sleep.iloc[0].get("end_time") or
@@ -236,7 +246,13 @@ def plot_sleep_timeline(df_levels, df_summary):
     start_time = pd.Timestamp(actual_date, tz=TIMEZONE) - pd.Timedelta(hours=3)
     end_time = start_time + pd.Timedelta(hours=27)
 
-    print(f"   📅 Date: {actual_date.strftime('%A %dth %B %Y')}")
+    # Format date if not provided
+    if formatted_date is None:
+        day = actual_date.day
+        suffix = get_ordinal_suffix(day)
+        formatted_date = actual_date.strftime(f'%A {day}{suffix} %B %Y')
+
+    print(f"   📅 Date: {formatted_date}")
     print(f"   🌙 To Bed: {main_sleep_start.strftime('%H:%M on %A %dth %B')}")
     if main_sleep_end is not None:
         print(f"   ☀️ Woke Up: {main_sleep_end.strftime('%H:%M on %A %dth %B')}\n")
@@ -258,7 +274,7 @@ def plot_sleep_timeline(df_levels, df_summary):
         ax.text(main_sleep_end, 1.05, "Up", ha="center", va="bottom",
                 fontsize=10, transform=ax.get_xaxis_transform())
 
-    title = f'{actual_date.strftime("%A %dth %B %Y")}\n'
+    title = f'{formatted_date}\n'
 
     format_timeline_axis(ax, start_time, end_time, title, interval_minutes=60)
     add_sleep_legend(ax, location='upper right')
@@ -266,9 +282,7 @@ def plot_sleep_timeline(df_levels, df_summary):
     plt.tight_layout()
     return fig
 
-# ============================================================================
-# ACTIVITY PATTERN ANALYSIS
-# ============================================================================
+
 
 def plot_steps_hour(df_steps_intra):
     """
@@ -328,16 +342,9 @@ def plot_steps_hour(df_steps_intra):
     plt.tight_layout()
     return fig
 
-def plot_naps_timeline(df_levels, df_summary):
+
+def plot_naps_timeline(df_levels, df_summary, formatted_date=None):
     """Plot individual timelines for all naps."""
-    # if df_summary.empty:
-    #     print(f"❌ No sleep summary found")
-    #     return None
-
-    # if 'isMainSleep' not in df_summary.columns:
-    #     print(f"❌ No isMainSleep column found")
-    #     return None
-
     naps = df_summary[df_summary['isMainSleep'] == 'False'].copy()
 
     if naps.empty:
@@ -348,6 +355,13 @@ def plot_naps_timeline(df_levels, df_summary):
     naps = naps.sort_values('time').reset_index(drop=True)
 
     print(f"💤 Found {len(naps)} nap(s)\n")
+
+    # Format date if not provided
+    if formatted_date is None:
+        nap_date = naps.iloc[0]['time'].date()
+        day = nap_date.day
+        suffix = get_ordinal_suffix(day)
+        formatted_date = nap_date.strftime(f'%A {day}{suffix} %B %Y')
 
     fig, axes = plt.subplots(len(naps), 1, figsize=(16, 3 * len(naps)))
     if len(naps) == 1:
@@ -373,9 +387,8 @@ def plot_naps_timeline(df_levels, df_summary):
         nap_asleep = nap['minutesAsleep']
 
         # Main title for the figure
-        fig.suptitle(f'{naps.iloc[0]["time"].strftime("%A %dth %B %Y")}', 
-                     fontsize=16, fontweight='bold', y=1)
-        
+        fig.suptitle(formatted_date, fontsize=16, fontweight='bold', y=1)
+
         # Each subplot title:
         title = (f'Nap {idx+1} - {nap["time"].strftime("%H:%M")} to {nap["end_time"].strftime("%H:%M")} | '
                  f'Duration: {nap_duration:.0f} min | Asleep: {nap_asleep:.0f} min')
@@ -389,13 +402,14 @@ def plot_naps_timeline(df_levels, df_summary):
     plt.tight_layout()
     return fig
 
-def plot_sleep_stages_pie(df_levels, df_summary):
+
+def plot_sleep_stages_pie(df_levels, df_summary, formatted_date=None):
     """Plot pie chart showing sleep stage distribution."""
     summary = get_main_sleep_session(df_summary)
     if summary is None:
         print(f"❌ No sleep summary found")
         return None
-    
+
     # Use wake-up date (end_time) for consistency with midnight-to-midnight approach
     end_time = summary.get('end_time') or summary.get('endTime')
     if end_time is not None:
@@ -406,51 +420,58 @@ def plot_sleep_stages_pie(df_levels, df_summary):
         # Fallback to start time if end_time not available
         start_time = summary['time']
         sleep_date = start_time.date()
-    
+
+    # Format date if not provided
+    if formatted_date is None:
+        day = sleep_date.day
+        suffix = get_ordinal_suffix(day)
+        formatted_date = sleep_date.strftime(f'%A {day}{suffix} %B %Y')
+
     stage_minutes = {
         'Deep': summary.get('minutesDeep', 0),
         'Light': summary.get('minutesLight', 0),
         'REM': summary.get('minutesREM', 0),
         'Awake': summary.get('minutesAwake', 0)
     }
-    
+
     stage_minutes = pd.Series(stage_minutes)
     non_awake = stage_minutes.sum() - stage_minutes.get('Awake', 0)
-    
+
     # Convert to hours and minutes
     def mins_to_hm(total_mins):
         hours = int(total_mins // 60)
         mins = int(total_mins % 60)
         return f'{hours}h {mins}m'
-    
+
     time_in_bed = summary['minutesInBed']
     time_asleep = non_awake
-    
+
     fig, ax = plt.subplots(figsize=(8, 8))
     colors_ordered = [SLEEP_COLORS[stage] for stage in stage_minutes.index]
-    
+
     wedges, texts, autotexts = ax.pie(
         stage_minutes,
         labels=[f'{stage}\n{mins_to_hm(mins)}' for stage, mins in stage_minutes.items()],
         autopct='%1.1f%%',
         colors=colors_ordered,
         startangle=90,
-        textprops={'fontsize': 12, 'fontweight': 'bold'},
+        textprops={'fontsize': 12, 'fontweight': 'normal'},
         explode=[0.05] * len(stage_minutes)
     )
-    
+
     for autotext in autotexts:
         autotext.set_color('white')
         autotext.set_fontsize(14)
-    
+
     ax.set_title(
+        f'{formatted_date}\n\n'
         f'Time in Bed: {mins_to_hm(time_in_bed)}\n'
         f'Time Asleep: {mins_to_hm(time_asleep)}',
-        fontsize=14,
+        fontsize=12,
         fontweight='bold',
         pad=10
     )
-    
+
     plt.tight_layout()
     return fig
 
