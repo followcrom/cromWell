@@ -36,6 +36,26 @@ MODERATE_FREQUENCY = {
     'SleepLevels': 'sleep_levels.parquet'
 }
 
+# Column filtering - only keep useful columns when writing to parquet
+# This prevents bloat from empty columns being written in the first place
+COLUMN_FILTER = {
+    'GPS': [
+        'time', 'date',
+        'field_lat', 'field_lon', 'field_altitude',
+        'field_heart_rate', 'field_distance',
+        'field_speed', 'field_pace',
+        'tag_ActivityID'
+    ],
+    'SleepLevels': [
+        'time', 'date',
+        'field_level', 'field_duration_seconds', 'field_endTime',
+        'tag_isMainSleep', 'tag_Device'
+    ],
+    # For high-frequency data, keep all columns (they're already minimal)
+    'HeartRate_Intraday': None,  # Keep all
+    'Steps_Intraday': None,      # Keep all
+}
+
 
 def get_date_from_filename(filename):
     """Extract date from fitbit_backup_YYYY-MM-DD.json.gz filename."""
@@ -70,6 +90,28 @@ def load_and_flatten_json_gz(file_path):
         flattened_records.append(flat_record)
 
     return flattened_records
+
+
+def filter_columns(df, measurement):
+    """
+    Filter DataFrame to keep only useful columns for a measurement.
+    This prevents writing bloated parquet files with empty columns.
+    """
+    if measurement not in COLUMN_FILTER or COLUMN_FILTER[measurement] is None:
+        # No filter defined or explicitly set to None - keep all columns
+        return df
+
+    keep_cols = COLUMN_FILTER[measurement]
+
+    # Only keep columns that exist in the dataframe
+    existing_cols = [col for col in keep_cols if col in df.columns]
+
+    # Warn if we're missing expected columns
+    missing_cols = set(keep_cols) - set(df.columns)
+    if missing_cols:
+        print(f"         ⚠️  Some columns not found: {', '.join(missing_cols)}")
+
+    return df[existing_cols].copy()
 
 
 def append_to__data(df, data_path, timezone='Europe/London'):
@@ -108,7 +150,10 @@ def append_to__data(df, data_path, timezone='Europe/London'):
         # Drop measurement column
         df_subset = df_subset.drop(columns=['measurement'])
 
-        print(f"      → {measurement}: {count:,} records to {dir_name}/")
+        # Filter to keep only useful columns (prevent bloat)
+        df_subset = filter_columns(df_subset, measurement)
+
+        print(f"      → {measurement}: {count:,} records ({len(df_subset.columns)} cols) to {dir_name}/")
 
         # Append to existing partitions or create new ones
         df_subset.to_parquet(
@@ -139,7 +184,10 @@ def append_to__data(df, data_path, timezone='Europe/London'):
         # Drop measurement column
         df_subset = df_subset.drop(columns=['measurement'])
 
-        print(f"      → {measurement}: {count:,} records to {filename}")
+        # Filter to keep only useful columns (prevent bloat)
+        df_subset = filter_columns(df_subset, measurement)
+
+        print(f"      → {measurement}: {count:,} records ({len(df_subset.columns)} cols) to {filename}")
 
         # Append or create
         if output_file.exists():
@@ -180,7 +228,7 @@ def append_to__data(df, data_path, timezone='Europe/London'):
             df_daily.to_parquet(output_file, index=False, compression='snappy')
 
 
-def sync_from_s3(data_dir='.',
+def sync_from_s3(data_dir='../data',
                  state_file='compilation_state.json',
                  download_only=False,
                  dry_run=False):
@@ -391,8 +439,8 @@ Examples:
 
     parser.add_argument(
         '--data-dir',
-        default='.',
-        help='Directory for data files (default: current directory)'
+        default='../data',
+        help='Directory for data files (default: ../data)'
     )
     parser.add_argument(
         '--state-file',

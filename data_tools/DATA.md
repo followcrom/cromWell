@@ -2,6 +2,8 @@
 
 ## Simple One-Command Update
 
+In data_tools/ run:
+
 ```bash
 ./update_fitbit_data.sh
 ```
@@ -19,19 +21,19 @@ That's it! This script:
 ### Dry Run (See What Would Be Downloaded)
 
 ```bash
-python sync_from_s3.py --dry-run
+py sync_from_s3.py --dry-run
 ```
 
 ### Download Only (Don't Process Yet)
 
 ```bash
-python sync_from_s3.py --download-only
+py sync_from_s3.py --download-only
 ```
 
 ### Process Already-Downloaded Files
 
 ```bash
-python update_parquet_lowmem.py
+py update_parquet_lowmem.py
 ```
 
 ## Data Structure
@@ -94,6 +96,10 @@ rm compilation_state.json
 ./update_fitbit_data.sh
 ```
 
+---
+
+<br>
+
 ## Files Overview
 
 | File | Purpose |
@@ -103,6 +109,29 @@ rm compilation_state.json
 | `update_parquet_lowmem.py` | Process local files only |
 | `compile_fitbit_data.py` | Full recompilation (rarely needed) |
 | `compilation_state.json` | State tracking (don't delete!) |
+
+---
+    
+<br>
+
+### Parquet Cleanup Script
+
+We ran this on 2026-01-17 to remove unused columns from Parquet files to save space. We should not need to run it again.
+
+  1. First, see what would be removed (dry run):
+
+  `python3 cleanup_parquet_columns.py --show`
+
+  2. If it looks good, actually clean up:
+
+  `python3 cleanup_parquet_columns.py`
+
+  3. If something goes wrong, restore from backup:
+  
+  `python3 cleanup_parquet_columns.py --restore`
+
+  The script creates timestamped backups before modifying anything, so it's safe to test!
+
 
 ---
 

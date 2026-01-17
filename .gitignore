@@ -13,9 +13,6 @@ cromwell_daily.log
 # Documentation
 docs/
 
-# Del files
-delete/
-
 # Tokens
 tokens.json
 
