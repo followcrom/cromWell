@@ -14,11 +14,12 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from components import (
-    create_sleep_timeline,
-    create_nap_timeline,  # Separate nap visualization
+    plot_sleep_timeline,
+    plot_nap_timeline,
     create_sleep_stages_donut,
     create_hourly_steps_chart,
     create_multi_day_sleep_timeline,
+    create_consolidated_sleep_timeline,
     display_sleep_metrics,
     display_sleep_vitals,
     display_sleep_sessions_table,
@@ -27,7 +28,7 @@ from components import (
 from functions import load_single_date, load_date_range
 
 # Configuration
-DATA_PATH = Path(__file__).parent.parent.parent / "data"
+DATA_PATH = "/home/followcrom/projects/cromWell/data"
 TIMEZONE = "Europe/London"
 
 # Sleep stage mapping
@@ -38,6 +39,18 @@ st.set_page_config(
     page_icon="😴",
     layout="wide",
 )
+
+# Hide Streamlit's default page navigation and reduce top whitespace
+st.markdown("""
+    <style>
+        [data-testid="stSidebarNav"] {
+            display: none;
+        }
+        section[data-testid="stSidebar"] > div {
+            padding-top: 0.1rem;
+        }
+    </style>
+""", unsafe_allow_html=True)
 
 
 def get_ordinal_suffix(day: int) -> str:
@@ -120,9 +133,9 @@ def load_range_data(start_str: str, end_str: str):
     return load_date_range(start_str, end_str, str(DATA_PATH), TIMEZONE)
 
 
-def prepare_sleep_data(dfs: dict) -> tuple:
+def extract_and_preprocess_sleep_data(dfs: dict) -> tuple:
     """
-    Prepare sleep data by adding computed columns.
+    Extract and preprocess sleep data by adding computed columns.
 
     Returns:
         Tuple of (df_levels, df_summary) with computed columns
@@ -156,7 +169,7 @@ def render_single_day_sleep(dfs: dict, selected_date: date):
     st.title("Sleep Well Crom?")
     st.markdown(f"### {formatted}")
 
-    df_levels, df_summary = prepare_sleep_data(dfs)
+    df_levels, df_summary = extract_and_preprocess_sleep_data(dfs)
 
     if df_summary is None or df_summary.empty:
         st.warning("No sleep data available for this date")
@@ -199,7 +212,7 @@ def render_single_day_sleep(dfs: dict, selected_date: date):
                 end_ts = pd.to_datetime(sleep_end)
                 st.info(f"Wake Up: {end_ts.strftime('%H:%M on %A')}")
 
-        fig = create_sleep_timeline(
+        fig = plot_sleep_timeline(
             df_levels,
             df_summary,
             title=f"Sleep Stages - {formatted}",
@@ -207,6 +220,15 @@ def render_single_day_sleep(dfs: dict, selected_date: date):
         st.plotly_chart(fig, width='stretch')
     else:
         st.info("No detailed sleep stage data available")
+
+    # Hourly Steps and Activity Levels side by side
+    # st.subheader("Hourly Steps")
+    df_steps = dfs.get("Steps_Intraday")
+    if df_steps is not None and not df_steps.empty:
+        fig_steps = create_hourly_steps_chart(df_steps)
+        st.plotly_chart(fig_steps, width='stretch')
+    else:
+        st.info("No steps data available")
 
     # Sleep Stages Donut and Hourly Steps side by side
     st.markdown("---")
@@ -218,13 +240,45 @@ def render_single_day_sleep(dfs: dict, selected_date: date):
         st.plotly_chart(fig_donut, width='stretch')
 
     with col2:
-        st.subheader("Daily Activity Context")
-        df_steps = dfs.get("Steps_Intraday")
-        if df_steps is not None and not df_steps.empty:
-            fig_steps = create_hourly_steps_chart(df_steps, title="Hourly Steps")
-            st.plotly_chart(fig_steps, width='stretch')
-        else:
-            st.info("No steps data available")
+        st.subheader("Sleep Stage Durations")
+
+        # Get main sleep session
+        main_sleep = df_summary[df_summary.get("isMainSleep", "True") == "True"]
+        if main_sleep.empty:
+            main_sleep = df_summary.iloc[[0]]
+
+        summary = main_sleep.iloc[0]
+
+        # Create bar chart data
+        stages = ["Deep", "Light", "REM", "Awake"]
+        minutes = [
+            summary.get("minutesDeep", 0),
+            summary.get("minutesLight", 0),
+            summary.get("minutesREM", 0),
+            summary.get("minutesAwake", 0),
+        ]
+
+        # Create bar chart
+        import plotly.graph_objects as go
+
+        fig_bars = go.Figure()
+        fig_bars.add_trace(go.Bar(
+            x=stages,
+            y=minutes,
+            marker_color=["#0f172a", "#a5d8ff", "#c084fc", "#fde047"],
+            text=[f"{int(m)}m" for m in minutes],
+            textposition="outside",
+        ))
+
+        fig_bars.update_layout(
+            title="Minutes per Stage",
+            xaxis_title="Sleep Stage",
+            yaxis_title="Minutes",
+            height=600,
+            showlegend=False,
+        )
+
+        st.plotly_chart(fig_bars, width='stretch')
 
     # ==========================================================================
     # NAPS SECTION: Separate timeline visualization for each nap
@@ -235,10 +289,11 @@ def render_single_day_sleep(dfs: dict, selected_date: date):
         st.markdown("---")
         st.subheader(f"Naps ({len(naps)} found)")
 
-        # Create nap timeline visualization
-        fig_naps = create_nap_timeline(df_levels, df_summary, TIMEZONE)
-        if fig_naps is not None:
-            st.plotly_chart(fig_naps, width='stretch')
+        # Create nap timeline visualizations (one figure per nap)
+        nap_figures = plot_nap_timeline(df_levels, df_summary)
+        if nap_figures is not None:
+            for fig in nap_figures:
+                st.plotly_chart(fig, use_container_width=True)
 
 
 def render_multi_day_sleep(dfs: dict, start_date: date, end_date: date):
@@ -246,7 +301,7 @@ def render_multi_day_sleep(dfs: dict, start_date: date, end_date: date):
     st.title("Multi-Day Sleep Analysis")
     st.markdown(f"### {format_date(start_date)} to {format_date(end_date)}")
 
-    df_levels, df_summary = prepare_sleep_data(dfs)
+    df_levels, df_summary = extract_and_preprocess_sleep_data(dfs)
 
     if df_summary is None or df_summary.empty:
         st.warning("No sleep data available for this date range")
@@ -278,6 +333,69 @@ def render_multi_day_sleep(dfs: dict, start_date: date, end_date: date):
             avg_rem = main_sleeps.get("minutesREM", pd.Series([0])).mean()
             st.metric("Avg REM Sleep", f"{int(avg_rem)} min")
 
+        # Second row of metrics for vitals and times
+        st.markdown("")  # Add some spacing
+        col1, col2, col3, col4, col5 = st.columns(5)
+
+        with col1:
+            # Average SpO2
+            spo2_data = dfs.get("SPO2_Daily")
+            if spo2_data is not None and not spo2_data.empty and "value" in spo2_data.columns:
+                avg_spo2 = spo2_data["value"].mean()
+                st.metric("Avg SpO2", f"{avg_spo2:.1f}%")
+            else:
+                st.metric("Avg SpO2", "N/A")
+
+        with col2:
+            # Average Skin Temperature
+            temp_data = dfs.get("SkinTemperature")
+            if temp_data is not None and not temp_data.empty and "value" in temp_data.columns:
+                avg_temp = temp_data["value"].mean()
+                st.metric("Avg Skin Temp", f"{avg_temp:.2f}°C")
+            else:
+                st.metric("Avg Skin Temp", "N/A")
+
+        with col3:
+            # Average HRV
+            hrv_data = dfs.get("HRV")
+            if hrv_data is not None and not hrv_data.empty:
+                # HRV data might be in dailyRmssd column
+                if "dailyRmssd" in hrv_data.columns:
+                    avg_hrv = hrv_data["dailyRmssd"].mean()
+                elif "value" in hrv_data.columns:
+                    avg_hrv = hrv_data["value"].mean()
+                else:
+                    avg_hrv = None
+
+                if avg_hrv is not None:
+                    st.metric("Avg HRV", f"{avg_hrv:.1f} ms")
+                else:
+                    st.metric("Avg HRV", "N/A")
+            else:
+                st.metric("Avg HRV", "N/A")
+
+        with col4:
+            # Average Bed Time
+            avg_bed_time = main_sleeps["time"].dt.time.apply(
+                lambda t: t.hour + t.minute/60
+            ).mean()
+            hours = int(avg_bed_time)
+            mins = int((avg_bed_time % 1) * 60)
+            st.metric("Avg Bed Time", f"{hours:02d}:{mins:02d}")
+
+        with col5:
+            # Average Wake Time
+            main_sleeps_with_end = main_sleeps[main_sleeps["end_time"].notna()]
+            if not main_sleeps_with_end.empty:
+                avg_wake_time = main_sleeps_with_end["end_time"].dt.time.apply(
+                    lambda t: t.hour + t.minute/60
+                ).mean()
+                hours = int(avg_wake_time)
+                mins = int((avg_wake_time % 1) * 60)
+                st.metric("Avg Wake Time", f"{hours:02d}:{mins:02d}")
+            else:
+                st.metric("Avg Wake Time", "N/A")
+
     # All sleep sessions table
     st.markdown("---")
     st.subheader("Sleep Sessions by Day")
@@ -296,6 +414,14 @@ def render_multi_day_sleep(dfs: dict, start_date: date, end_date: date):
             df_levels, df_summary, date_strs, TIMEZONE
         )
         st.plotly_chart(fig, width='stretch')
+
+        # Consolidated timeline
+        st.markdown("---")
+        st.subheader("Consolidated Sleep Timeline")
+        fig_consolidated = create_consolidated_sleep_timeline(
+            df_levels, df_summary, date_strs, TIMEZONE
+        )
+        st.plotly_chart(fig_consolidated, width='stretch')
     else:
         st.info("No detailed sleep stage data available for timeline")
 

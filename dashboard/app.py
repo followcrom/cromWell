@@ -6,7 +6,7 @@ A Streamlit dashboard for analyzing Fitbit data with interactive Plotly charts.
 
 import streamlit as st
 from datetime import date, timedelta
-from pathlib import Path
+from components import render_calendar
 
 st.set_page_config(
     page_title="Fitbit Dashboard",
@@ -15,8 +15,20 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Hide Streamlit's default page navigation and reduce top whitespace
+st.markdown("""
+    <style>
+        [data-testid="stSidebarNav"] {
+            display: none;
+        }
+        section[data-testid="stSidebar"] > div {
+            padding-top: 0.1rem;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
 # Configuration
-DATA_PATH = Path(__file__).parent.parent / "data"
+DATA_PATH = "/home/followcrom/projects/cromWell/data"
 TIMEZONE = "Europe/London"
 
 
@@ -40,17 +52,19 @@ def init_session_state():
         st.session_state.date_mode = "Single Date"
     if "selected_date" not in st.session_state:
         st.session_state.selected_date = date.today() - timedelta(days=9)
-        print(f"Initialized selected_date to {st.session_state.selected_date}")
+        print(f"Initial date is: {st.session_state.selected_date}")
     if "start_date" not in st.session_state:
         st.session_state.start_date = date.today() - timedelta(days=7)
     if "end_date" not in st.session_state:
         st.session_state.end_date = date.today() - timedelta(days=1)
+    if "calendar_month" not in st.session_state:
+        st.session_state.calendar_month = date.today()
 
 
 def render_sidebar():
     """Render the sidebar with date selection controls."""
     with st.sidebar:
-        st.title("Fitbit Dashboard")
+        st.title("CromWell Dashboard")
         st.markdown("---")
 
         # Date mode toggle
@@ -93,12 +107,12 @@ def render_sidebar():
         st.page_link("pages/1_Activity.py", label="Activity", icon="🏃")
         st.page_link("pages/2_Sleep.py", label="Sleep", icon="😴")
 
-        st.markdown("---")
-        st.caption("Use sidebar links or browser URLs:")
+        # st.markdown("---")
+        # st.caption("Use sidebar links or browser URLs:")
         st.caption("/Activity, /Sleep")
 
-        st.markdown("---")
-        st.caption(f"Data path: {DATA_PATH}")
+        # st.markdown("---")
+        # st.caption(f"Data path: {DATA_PATH}")
 
 
 def main():
@@ -150,7 +164,30 @@ def main():
         st.page_link("pages/2_Sleep.py", label="Go to Sleep →", icon="😴")
 
     st.markdown("---")
-    st.info("Select a page from the sidebar or click the links above to begin your analysis.")
+
+    # Interactive Calendar
+    st.markdown("### 📅 Select a Date")
+    st.markdown("Click on any date with a 🟢 to view data for that day.")
+
+    # Render calendar and handle date selection
+    new_date, new_month = render_calendar(
+        DATA_PATH,
+        st.session_state.selected_date,
+        st.session_state.calendar_month
+    )
+
+    # Update session state if date or month changed
+    if new_date != st.session_state.selected_date:
+        st.session_state.selected_date = new_date
+        st.session_state.date_mode = "Single Date"
+        st.rerun()
+
+    if new_month != st.session_state.calendar_month:
+        st.session_state.calendar_month = new_month
+        st.rerun()
+
+    st.markdown("---")
+    st.info("Go, get out, make haste ye venal slaves. I will put an end to your prating. - Oliver Cromwell to the House of Commons, 1653")
 
 
 if __name__ == "__main__":

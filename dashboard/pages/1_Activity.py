@@ -14,29 +14,44 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from components import (
+    extract_activity_time_window,
     create_hr_timeline,
     create_hourly_steps_chart,
     create_activity_levels_chart,
     create_gps_route_map,
     create_hr_zones_chart,
-    display_activity_metrics,
-    display_extended_activity_metrics,
-    display_activity_summary_table,
+    activity_metrics_line1,
+    activity_metrics_line2,
+    activity_metrics_avgs1,
+    activity_metrics_avgs2,
+    activity_summary_table,
     calculate_activity_levels,
     calculate_hr_zone_data,
 )
 
-from functions import load_single_date, load_date_range, extract_activity_time_window
+from functions import load_single_date, load_date_range
 
 # Configuration
-DATA_PATH = Path(__file__).parent.parent.parent / "data"
+DATA_PATH = "/home/followcrom/projects/cromWell/data"
 TIMEZONE = "Europe/London"
 
 st.set_page_config(
-    page_title="Activity - Fitbit Dashboard",
+    page_title="Activity - CromWell Dashboard",
     page_icon="🏃",
     layout="wide",
 )
+
+# Hide Streamlit's default page navigation and reduce top whitespace
+st.markdown("""
+    <style>
+        [data-testid="stSidebarNav"] {
+            display: none;
+        }
+        section[data-testid="stSidebar"] > div {
+            padding-top: 0.1rem;
+        }
+    </style>
+""", unsafe_allow_html=True)
 
 
 def get_ordinal_suffix(day: int) -> str:
@@ -122,17 +137,19 @@ def load_range_data(start_str: str, end_str: str):
 def render_single_day_activity(dfs: dict, selected_date: date):
     """Render activity analysis for a single day."""
     formatted = format_date(selected_date)
-    st.title(f"Activity Analysis")
+    st.title(f"Activity Analysis - {formatted}")
     st.markdown(f"### {formatted}")
 
     # Metrics row
     st.markdown("---")
-    display_activity_metrics(dfs)
-    display_extended_activity_metrics(dfs)
+    activity_metrics_line1(dfs)
+    activity_metrics_line2(dfs)
+
+    st.markdown("---")
 
     # Heart Rate Timeline
-    st.markdown("---")
-    st.subheader("Heart Rate Timeline")
+    # st.markdown("---")
+    # st.subheader(f"Heart Rate - {formatted}")
 
     df_hr = dfs.get("HeartRate_Intraday")
     df_activities = dfs.get("ActivityRecords")
@@ -145,30 +162,31 @@ def render_single_day_activity(dfs: dict, selected_date: date):
         )
         st.plotly_chart(fig, width='stretch')
 
-        # HR Zones
-        zone_data = calculate_hr_zone_data(df_hr)
-        if zone_data:
-            st.subheader("Time in Heart Rate Zones")
-            fig_zones = create_hr_zones_chart(zone_data)
-            st.plotly_chart(fig_zones, width='stretch')
-    else:
-        st.info("No heart rate data available for this date")
+    st.markdown("---")
 
     # Hourly Steps and Activity Levels side by side
+    # st.subheader("Hourly Steps")
+    df_steps = dfs.get("Steps_Intraday")
+    if df_steps is not None and not df_steps.empty:
+        fig_steps = create_hourly_steps_chart(df_steps)
+        st.plotly_chart(fig_steps, width='stretch')
+    else:
+        st.info("No steps data available")
+
     st.markdown("---")
     col1, col2 = st.columns(2)
 
     with col1:
-        st.subheader("Hourly Steps")
-        df_steps = dfs.get("Steps_Intraday")
-        if df_steps is not None and not df_steps.empty:
-            fig_steps = create_hourly_steps_chart(df_steps)
-            st.plotly_chart(fig_steps, width='stretch')
+        zone_data = calculate_hr_zone_data(df_hr)
+        if zone_data:
+            # st.subheader("Time in Heart Rate Zones")
+            fig_zones = create_hr_zones_chart(zone_data)
+            st.plotly_chart(fig_zones, width='stretch')
         else:
-            st.info("No steps data available")
+            st.info("No heart rate data available for this date")
 
     with col2:
-        st.subheader("Activity Levels")
+        # st.subheader("Activity Levels")
         level_data = calculate_activity_levels(dfs)
         if level_data:
             fig_levels = create_activity_levels_chart(level_data)
@@ -179,7 +197,7 @@ def render_single_day_activity(dfs: dict, selected_date: date):
     # Logged Activities
     st.markdown("---")
     st.subheader("Logged Activities")
-    display_activity_summary_table(dfs)
+    activity_summary_table(dfs)
 
     # Per-activity analysis
     if df_activities is not None and not df_activities.empty:
@@ -190,6 +208,67 @@ def render_single_day_activity(dfs: dict, selected_date: date):
             activity_name = activity.get("ActivityName", "Unknown")
             with st.expander(f"{activity_name} - {activity['time'].strftime('%H:%M')}"):
                 render_activity_details(activity, df_hr, dfs.get("GPS"))
+
+
+
+
+def render_multi_day_activity(dfs: dict, start_date: date, end_date: date):
+    """Render activity analysis for multiple days."""
+    st.title("Activity Analysis")
+    st.markdown(f"### {format_date(start_date)} to {format_date(end_date)}")
+
+    st.info("Multi-day activity analysis shows aggregated data across the date range.")
+
+    # Show metrics (averaged across date range)
+    st.markdown("---")
+    activity_metrics_avgs1(dfs)
+    activity_metrics_avgs2(dfs)
+
+    # Get data for charts and details
+    df_hr = dfs.get("HeartRate_Intraday")
+    df_activities = dfs.get("ActivityRecords")
+    df_steps = dfs.get("Steps_Intraday")
+
+    # All logged activities
+    st.markdown("---")
+    st.subheader("All Logged Activities")
+    activity_summary_table(dfs)
+
+    # Per-activity analysis
+    st.markdown("---")
+    if df_activities is not None and not df_activities.empty:
+        # st.markdown("---")
+        st.subheader("Activity Details")
+
+        for idx, (_, activity) in enumerate(df_activities.sort_values("time").iterrows()):
+            activity_name = activity.get("ActivityName", "Unknown")
+            with st.expander(f"{activity_name} - {activity['time'].strftime('%m-%d-%y')}"):
+                render_activity_details(activity, df_hr, dfs.get("GPS"))
+
+    # Hourly Steps pattern (averaged across all days)
+    st.markdown("---")
+    if df_steps is not None and not df_steps.empty:
+        num_days = (end_date - start_date).days + 1
+
+        # Calculate average steps per hour across all days
+        df_steps_copy = df_steps.copy()
+        df_steps_copy["hour"] = df_steps_copy["time"].dt.hour
+        hourly_totals = df_steps_copy.groupby("hour")["value"].sum()
+        hourly_avg = hourly_totals / num_days
+
+        # Create dataframe for plotting with proper datetime format
+        df_hourly_avg = pd.DataFrame({
+            'time': pd.to_datetime([f"2000-01-01 {h:02d}:00:00" for h in range(24)]),
+            'value': [hourly_avg.get(h, 0) for h in range(24)]
+        })
+
+        fig_steps = create_hourly_steps_chart(
+            df_hourly_avg,
+            title=f"Average Hourly Steps (over {num_days} days)"
+        )
+        st.plotly_chart(fig_steps, width='stretch')
+    else:
+        st.info("No steps data available")
 
 
 def render_activity_details(activity: pd.Series, df_hr: pd.DataFrame, df_gps: pd.DataFrame):
@@ -203,8 +282,11 @@ def render_activity_details(activity: pd.Series, df_hr: pd.DataFrame, df_gps: pd
         st.metric("Duration", f"{int(duration_min)} min")
 
     with col2:
-        calories = activity.get("calories", 0)
-        st.metric("Calories", f"{int(calories)}")
+        distance = activity.get("distance")
+        if pd.notna(distance) and distance > 0:
+            st.metric("Distance", f"{distance * 1.60934:.2f} km / {distance:.2f} mi")
+        else:
+            st.metric("Distance", "N/A")
 
     with col3:
         avg_hr = activity.get("averageHeartRate")
@@ -214,11 +296,8 @@ def render_activity_details(activity: pd.Series, df_hr: pd.DataFrame, df_gps: pd
             st.metric("Avg HR", "N/A")
 
     with col4:
-        distance = activity.get("distance")
-        if pd.notna(distance) and distance > 0:
-            st.metric("Distance", f"{distance:.2f} mi")
-        else:
-            st.metric("Distance", "N/A")
+        calories = activity.get("calories", 0)
+        st.metric("Calories", f"{int(calories)}")
 
     # Activity-specific HR analysis
     if df_hr is not None and not df_hr.empty:
@@ -233,18 +312,18 @@ def render_activity_details(activity: pd.Series, df_hr: pd.DataFrame, df_gps: pd
             ]
 
             if not activity_hr.empty:
-                st.markdown("**Heart Rate During Activity**")
+                # st.markdown("**Heart Rate During Activity**")
                 fig = create_hr_timeline(
                     activity_hr,
-                    title=f"HR during {activity.get('ActivityName', 'Activity')}",
+                    title=f"{activity_start.strftime('%H:%M')} - {activity_end.strftime('%H:%M')}",
                 )
                 st.plotly_chart(fig, width='stretch')
 
-                # HR stats
-                vals = activity_hr["value"]
-                st.markdown(
-                    f"**HR Stats:** Min: {vals.min():.0f} | Avg: {vals.mean():.0f} | Max: {vals.max():.0f} bpm"
-                )
+                # # HR stats
+                # vals = activity_hr["value"]
+                # st.markdown(
+                #     f"**HR Stats:** Min: {vals.min():.0f} | Avg: {vals.mean():.0f} | Max: {vals.max():.0f} bpm"
+                # )
         except Exception as e:
             st.warning(f"Could not analyze activity HR: {e}")
 
@@ -262,47 +341,12 @@ def render_activity_details(activity: pd.Series, df_hr: pd.DataFrame, df_gps: pd
             ]
 
             if not walk_gps.empty:
-                st.markdown("**Route Map**")
+                # st.markdown("**Route Map**")
                 fig_map = create_gps_route_map(walk_gps)
                 st.plotly_chart(fig_map, width='stretch')
         except Exception:
             pass  # GPS may not be available
 
-
-def render_multi_day_activity(dfs: dict, start_date: date, end_date: date):
-    """Render activity analysis for multiple days."""
-    st.title("Activity Analysis")
-    st.markdown(f"### {format_date(start_date)} to {format_date(end_date)}")
-
-    st.info("Multi-day activity analysis shows aggregated data across the date range.")
-
-    # Show metrics (will be averaged/totaled as appropriate)
-    st.markdown("---")
-    display_activity_metrics(dfs)
-
-    # HR timeline for the entire range
-    st.markdown("---")
-    st.subheader("Heart Rate Overview")
-
-    df_hr = dfs.get("HeartRate_Intraday")
-    if df_hr is not None and not df_hr.empty:
-        fig = create_hr_timeline(df_hr, title="Heart Rate - Date Range")
-        st.plotly_chart(fig, width='stretch')
-    else:
-        st.info("No heart rate data available")
-
-    # Activity levels aggregate
-    st.markdown("---")
-    st.subheader("Activity Levels")
-    level_data = calculate_activity_levels(dfs)
-    if level_data:
-        fig_levels = create_activity_levels_chart(level_data)
-        st.plotly_chart(fig_levels, width='stretch')
-
-    # All logged activities
-    st.markdown("---")
-    st.subheader("All Logged Activities")
-    display_activity_summary_table(dfs)
 
 
 def main():
