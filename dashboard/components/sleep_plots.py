@@ -34,6 +34,15 @@ ACTIVITY_COLORS = {
     "Very Active": "#DC143C",
 }
 
+TIMEZONE = "Europe/London"
+
+# ==========================================================================
+# Functions
+# ==========================================================================
+
+def mins_to_hm(m):
+    return f"{int(m // 60)}h {int(m % 60)}m"
+
 
 def _fill_sleep_gaps(
     df_levels: pd.DataFrame,
@@ -64,9 +73,9 @@ def _fill_sleep_gaps(
     Returns:
         DataFrame with Awake periods added to fill gaps
     """
-    TIMEZONE = "Europe/London"
 
     levels = df_levels.copy()
+
     # Convert from UTC to Europe/London
     levels['time'] = levels['time'].dt.tz_convert(TIMEZONE)
     if 'end_time' in levels.columns:
@@ -76,27 +85,13 @@ def _fill_sleep_gaps(
     if 'end_time' not in levels.columns and 'duration_seconds' in levels.columns:
         levels['end_time'] = levels['time'] + pd.to_timedelta(levels['duration_seconds'], unit='s')
 
-    print(f"\n{'='*80}")
-    print(f"_fill_sleep_gaps() called for window: {start_time} to {end_time}")
-    print(f"{'='*80}")
-    print(f"Total levels in dataset: {len(levels)}")
-
-    if not levels.empty:
-        print(f"All levels time range: {levels['time'].min()} to {levels['time'].max()}")
-
-    # Filter by OVERLAP (to catch levels that cross midnight)
-    print(f"\nFiltering levels that OVERLAP with window [{start_time}, {end_time}):")
+    # # Filter by OVERLAP (to catch levels that cross midnight)
     levels = levels[(levels["end_time"] > start_time) & (levels["time"] < end_time)].copy()
-
-    print(f"  Found {len(levels)} levels (before clipping)")
 
     # Clip levels to window boundaries
     levels.loc[levels["time"] < start_time, "time"] = start_time
     levels.loc[levels["end_time"] > end_time, "end_time"] = end_time
     levels["duration_seconds"] = (levels["end_time"] - levels["time"]).dt.total_seconds()
-
-    if not levels.empty:
-        print(f"  Time range after clipping: {levels['time'].min()} to {levels['end_time'].max()}")
 
     if levels.empty:
         print(f"WARNING: No levels found in window!")
@@ -112,22 +107,13 @@ def _fill_sleep_gaps(
     elif 'endTime' in summary.columns:
         summary['end_time'] = pd.to_datetime(summary['endTime']).dt.tz_convert(TIMEZONE)
 
-    print(f"\nAll sessions in dataset:")
-    for idx, sess in summary.iterrows():
-        print(f"  {sess['time']} to {sess['end_time']}")
-
     # CRITICAL FIX: Only keep sessions that overlap with [start_time, end_time) window
     # A session overlaps if: session_end > start_time AND session_start < end_time
-    print(f"\nFiltering sessions that overlap with window [{start_time}, {end_time}):")
     summary = summary[
         (summary['end_time'] > start_time) & (summary['time'] < end_time)
     ].copy()
 
     summary = summary.sort_values("time").reset_index(drop=True)
-
-    print(f"Sessions after filtering: {len(summary)}")
-    for idx, sess in summary.iterrows():
-        print(f"  Session {idx}: {sess['time']} to {sess['end_time']}")
 
     gaps_to_add = []
 
@@ -138,14 +124,10 @@ def _fill_sleep_gaps(
     # ==========================================================================
     if not levels.empty:
         first_level_time = levels["time"].min()
-        print(f"\nSTEP 1 - Check gap at window start:")
-        print(f"  Window start: {start_time}")
-        print(f"  First level: {first_level_time}")
         # Only add gap if first level starts AFTER window start
         if start_time < first_level_time:
             gap_seconds = (first_level_time - start_time).total_seconds()
             if gap_seconds > 60:  # Only add if gap > 1 minute
-                print(f"  Adding gap: {gap_seconds/60:.1f} minutes")
                 gaps_to_add.append({
                     "time": start_time,
                     "end_time": first_level_time,
@@ -162,7 +144,6 @@ def _fill_sleep_gaps(
     # STEP 2: Check if stages data ends before session end_time
     # CRITICAL: Clip session times to window boundaries to avoid gaps outside window
     # ==========================================================================
-    print(f"\nSTEP 2 - Check for gaps within sessions:")
     for idx, session in summary.iterrows():
         session_start = session["time"]
         session_end = session.get("end_time") or session.get("endTime")
@@ -185,7 +166,6 @@ def _fill_sleep_gaps(
             if last_stage_end < clipped_end and last_stage_end >= start_time:
                 gap_seconds = (clipped_end - last_stage_end).total_seconds()
                 if gap_seconds > 30:
-                    print(f"  Session gap: {last_stage_end} to {clipped_end} ({gap_seconds/60:.1f} min)")
                     gaps_to_add.append({
                         "time": last_stage_end,
                         "end_time": clipped_end,
@@ -198,7 +178,6 @@ def _fill_sleep_gaps(
     # STEP 3: Find gaps BETWEEN sleep sessions
     # CRITICAL: Clip gaps to window boundaries
     # ==========================================================================
-    print(f"\nSTEP 3 - Check for gaps between sessions:")
     for i in range(len(summary) - 1):
         current_session_end = summary.iloc[i].get("end_time") or summary.iloc[i].get("endTime")
         next_session_start = summary.iloc[i + 1]["time"]
@@ -215,7 +194,6 @@ def _fill_sleep_gaps(
         if gap_start < gap_end:
             gap_seconds = (gap_end - gap_start).total_seconds()
             if gap_seconds > 60:
-                print(f"  Between-session gap: {gap_start} to {gap_end} ({gap_seconds/60:.1f} min)")
                 gaps_to_add.append({
                     "time": gap_start,
                     "end_time": gap_end,
@@ -231,14 +209,10 @@ def _fill_sleep_gaps(
     # ==========================================================================
     if not levels.empty:
         last_level_end = levels["end_time"].max()
-        print(f"\nSTEP 4 - Check gap at window end:")
-        print(f"  Last level end: {last_level_end}")
-        print(f"  Window end: {end_time}")
         # Only add gap if last level ends BEFORE window end
         if last_level_end < end_time:
             gap_seconds = (end_time - last_level_end).total_seconds()
             if gap_seconds > 60:
-                print(f"  Adding gap: {gap_seconds/60:.1f} minutes")
                 gaps_to_add.append({
                     "time": last_level_end,
                     "end_time": end_time,
@@ -254,29 +228,23 @@ def _fill_sleep_gaps(
     # ==========================================================================
     # STEP 5: Add all gap periods to the levels dataframe
     # ==========================================================================
-    print(f"\nGaps to add: {len(gaps_to_add)}")
-    for gap in gaps_to_add:
-        print(f"  {gap['time']} to {gap['end_time']} ({gap['duration_seconds']/60:.1f} min) - {gap['level_name']}")
-
     if gaps_to_add:
         levels = pd.concat([levels, pd.DataFrame(gaps_to_add)], ignore_index=True)
         levels = levels.sort_values("time").reset_index(drop=True)
 
-    print(f"\nFinal result: {len(levels)} levels total")
-    print(f"{'='*80}\n")
     return levels
 
 
 def plot_sleep_timeline(
     df_levels: pd.DataFrame,
     df_summary: pd.DataFrame,
-    title: str = "Sleep Timeline",
+    title,
 ) -> go.Figure:
     """
     Create a Gantt-style timeline showing sleep stages for MAIN SLEEP.
 
     ============================================================================
-    KEY FEATURE: 27-HOUR WINDOW (matching notebook behavior)
+    KEY FEATURE: 27-HOUR WINDOW
     - Window runs from 21:00 the day before to 00:00 the day after
     - This captures overnight sleep that spans midnight
     - Based on the wake-up time (end_time) of main sleep session
@@ -303,7 +271,6 @@ def plot_sleep_timeline(
         main_sleep.iloc[0].get("end_time") or
         None
     )
-    TIMEZONE = "Europe/London"
 
     main_start = main_sleep.iloc[0]["time"]
     if not isinstance(main_start, pd.Timestamp):
@@ -323,7 +290,7 @@ def plot_sleep_timeline(
     start_time = pd.Timestamp(actual_date, tz=TIMEZONE) - pd.Timedelta(hours=3)
     end_time = start_time + pd.Timedelta(hours=27)
 
-    # Use existing _fill_sleep_gaps() helper for gap-filling
+    # Use _fill_sleep_gaps() helper for gap-filling
     levels = _fill_sleep_gaps(df_levels, df_summary, start_time, end_time)
 
     if levels.empty:
@@ -361,7 +328,7 @@ def plot_sleep_timeline(
         x_start="Start",
         x_end="Finish",
         y="Task",  # Single row
-        color="Stage",  # Color segments by stage
+        color="Stage",
         color_discrete_map=SLEEP_COLORS,
         category_orders={"Stage": ["Deep", "Light", "REM", "Awake"]},
         hover_data={"Duration": True},
@@ -390,7 +357,7 @@ def plot_sleep_timeline(
             x0=main_sleep_end, x1=main_sleep_end,
             y0=0, y1=1,
             yref="paper",
-            line=dict(color="green", dash="dash", width=1),
+            line=dict(color="orange", dash="dash", width=1),
         )
         fig.add_annotation(
             x=main_sleep_end,
@@ -398,27 +365,31 @@ def plot_sleep_timeline(
             yref="paper",
             text="Up",
             showarrow=False,
-            font=dict(color="green"),
+            font=dict(color="orange"),
         )
 
     # Configure layout
     fig.update_layout(
-        title=title,
+        # title=dict(
+        #     text=title,
+        #     y=1.0,
+        #     font=dict(size=26),
+        # ),
         xaxis=dict(
             tickformat="%H:%M",
             dtick=60 * 60 * 1000,  # every hour
             range=[start_time, end_time],
-            rangeslider=dict(visible=True),
+            rangeslider=dict(visible=False),
             tickangle=-45,
             showgrid=True,
-            gridcolor="rgba(128, 128, 128, 0.3)",
+            gridcolor="rgba(128, 128, 128, 0.5)",
             griddash="dash",
         ),
         yaxis=dict(
             showticklabels=False,
             title="",
         ),
-        height=400,
+        height=450,
         showlegend=True,
         legend=dict(
             orientation="h",
@@ -426,6 +397,7 @@ def plot_sleep_timeline(
             y=1.02,
             xanchor="right",
             x=1,
+            title="",
         ),
     )
 
@@ -456,31 +428,23 @@ def plot_nap_timeline(
 
     naps = df_summary[df_summary['isMainSleep'] == 'False'].copy()
 
-    if naps.empty:
-        print(f"😴 No naps found")
-        return None
-
     # Sort naps by time (earliest first)
     naps = naps.sort_values('time').reset_index(drop=True)
 
-    print(f"💤 Found {len(naps)} nap(s)\n")
-
-    TIMEZONE = "Europe/London"
     figures = []
 
     for idx, (_, nap) in enumerate(naps.iterrows()):
-        # Convert nap times to Europe/London
-        nap_time = nap['time'].tz_convert(TIMEZONE)
+        nap_time = nap['time']
         nap_end = nap.get('end_time') or nap.get('endTime')
         if nap_end is None and 'minutesAsleep' in nap:
             nap_end = nap_time + pd.Timedelta(minutes=nap['minutesAsleep'])
         else:
-            nap_end = pd.to_datetime(nap_end).tz_convert(TIMEZONE) if nap_end is not None else None
+            nap_end = pd.to_datetime(nap_end) if nap_end is not None else None
 
         if nap_end is None:
             nap_end = nap_time + pd.Timedelta(hours=1)  # Default 1-hour nap
 
-        nap_label = f"Nap {idx+1}"
+        # nap_label = f"Nap {idx+1}"
 
         # Calculate display window with 30-min buffer for x-axis range
         display_start = nap_time - pd.Timedelta(minutes=30)
@@ -527,57 +491,55 @@ def plot_nap_timeline(
             hover_data={"Duration": True},
         )
 
-        # Add start time marker
-        fig.add_shape(
-            type="line",
-            x0=nap_time, x1=nap_time,
-            y0=0, y1=1,
-            yref="paper",
-            line=dict(color="green", dash="dash", width=1),
-        )
         fig.add_annotation(
             x=nap_time,
-            y=1.02,
+            y=0.8,
             yref="paper",
-            text=f"Start {nap_time.strftime('%H:%M')}",
-            showarrow=False,
-            font=dict(color="green", size=10),
+            text=f"Start<br>{nap_time.strftime('%H:%M')}",
+            showarrow=True,
+            arrowhead=2,
+            arrowsize=1,
+            arrowwidth=1,
+            arrowcolor="green",
+            ax=0,
+            ay=-40,
+            font=dict(color="green", size=12),
+            bgcolor="rgba(255, 255, 255, 0.8)",
         )
 
-        # Add end time marker
-        fig.add_shape(
-            type="line",
-            x0=nap_end, x1=nap_end,
-            y0=0, y1=1,
-            yref="paper",
-            line=dict(color="green", dash="dash", width=1),
-        )
         fig.add_annotation(
             x=nap_end,
-            y=1.02,
+            y=0.8,
             yref="paper",
-            text=f"End {nap_end.strftime('%H:%M')}",
-            showarrow=False,
-            font=dict(color="green", size=10),
+            text=f"End<br>{nap_end.strftime('%H:%M')}",
+            showarrow=True,
+            arrowhead=2,
+            arrowsize=1,
+            arrowwidth=1,
+            arrowcolor="orange",
+            ax=0,
+            ay=-40,
+            font=dict(color="orange", size=12),
+            bgcolor="rgba(255, 255, 255, 0.8)",
         )
 
         fig.update_layout(
-            height=250,  # Increased height
+            height=215,
             xaxis=dict(
                 tickformat="%H:%M",
                 dtick=15 * 60 * 1000,  # Every 15 minutes
                 range=[display_start, display_end],  # 30-min buffer on each side
                 tickangle=-45,
                 showgrid=True,
-                gridcolor="rgba(128, 128, 128, 0.3)",
+                gridcolor="rgba(128, 128, 128, 0.5)",
                 griddash="dash",
             ),
             yaxis=dict(
-                showticklabels=False,  # Hide the "Nap" label
+                showticklabels=False,  # Hide the "Nap" label on y-axis
                 title="",
             ),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-            title=nap_label,
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, title=""),
+            # title=nap_label,
         )
 
         figures.append(fig)
@@ -587,7 +549,6 @@ def plot_nap_timeline(
 
 def create_sleep_stages_donut(
     df_summary: pd.DataFrame,
-    title: str = "Main Sleep Composition",
 ) -> go.Figure:
     """
     Create a donut chart showing sleep stage distribution.
@@ -618,9 +579,6 @@ def create_sleep_stages_donut(
     ]
     colors = [SLEEP_COLORS[s] for s in stages]
 
-    def mins_to_hm(m):
-        return f"{int(m // 60)}h {int(m % 60)}m"
-
     labels = [f"{s}<br>{mins_to_hm(m)}" for s, m in zip(stages, minutes)]
 
     fig = go.Figure(
@@ -642,23 +600,74 @@ def create_sleep_stages_donut(
         text=f"<b>Asleep</b>: {mins_to_hm(total_asleep)}<br><b>In Bed:</b> <br>{mins_to_hm(total_in_bed)}",
         x=0.5,
         y=0.5,
-        font_size=14,
+        font_size=16,
         showarrow=False,
     )
 
     fig.update_layout(
-        title=title,
+        title=dict(
+            text="Sleep Composition",
+            y=0.95,
+            font=dict(size=24),
+        ),
         height=600,
-        showlegend=True,
-        legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5),
+        legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5, font=dict(size=14)),
+        font=dict(size=16),
     )
 
     return fig
 
-def create_sleep_bar_chart():
-    pass  # Placeholder for additional functions if needed
-        
-        
+def create_sleep_stages_bar(
+    df_summary: pd.DataFrame,
+) -> go.Figure:
+    """
+    Create a bar chart showing sleep stage durations.
+    Args:
+        df_summary: Sleep summary dataframe
+    """
+    if df_summary.empty:
+        return _create_empty_chart("No sleep summary data available")
+
+    # Get main sleep session
+    main_sleep = df_summary[df_summary.get("isMainSleep", "True") == "True"]
+    if main_sleep.empty:
+        main_sleep = df_summary.iloc[[0]]
+
+    summary = main_sleep.iloc[0]
+
+    stages = ["Deep", "Light", "REM", "Awake"]
+    colors = [SLEEP_COLORS[s] for s in stages]
+    
+    minutes = [
+        summary.get("minutesDeep", 0),
+        summary.get("minutesLight", 0),
+        summary.get("minutesREM", 0),
+        summary.get("minutesAwake", 0),
+    ]
+
+    fig = go.Figure(
+    go.Bar(
+        x=stages,
+        y=minutes,
+        marker_color=colors,
+        text=[f"{int(m)} min" for m in minutes],
+        textposition="outside",
+        hovertemplate="<b>%{x}</b><br>%{customdata}<br>%{y} minutes<extra></extra>",
+        customdata=[mins_to_hm(m) for m in minutes],
+    ))
+
+    fig.update_layout(
+        title=dict(
+            text="Sleep Stage Duration",
+            y=0.95,
+            font=dict(size=24),
+        ),
+        yaxis_title="Minutes",
+        height=600,
+        showlegend=False,
+    )
+
+    return fig
 
 def create_multi_day_sleep_timeline(
     df_levels: pd.DataFrame,
@@ -820,14 +829,14 @@ def create_multi_day_sleep_timeline(
             tickformat="%H:%M",
             dtick=60 * 120 * 1000,
             tickangle=-45,
-            rangeslider=dict(visible=True),
+            # rangeslider=dict(visible=True),
             showgrid=True,
             gridcolor="rgba(128, 128, 128, 0.3)",
             griddash="dash",
         ),
         yaxis=dict(title=""),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, title=""),
-        margin=dict(l=100, r=20, t=40, b=40),
+        margin=dict(l=100, r=20, t=0, b=20),
     )
 
     return fig
@@ -852,8 +861,6 @@ def create_consolidated_sleep_timeline(
     """
     if df_levels.empty or df_summary.empty:
         return _create_empty_chart("No sleep data available")
-
-    # level_decode = {0: "Deep", 1: "Light", 2: "REM", 3: "Awake"}
 
     # Prepare data for all days in chronological order
     timeline_data = []
@@ -908,31 +915,35 @@ def create_consolidated_sleep_timeline(
         hover_data={"Duration": True},
     )
 
+    # Add opacity to bars so grid lines show through
+    fig.update_traces(opacity=0.8)
 
     # Configure layout
     fig.update_layout(
         # title="Consolidated Sleep Timeline - All Days",
         xaxis=dict(
-            tickformat="%a %b %d<br>%H:%M",
+            tickformat="%a %d %b<br>%H:%M",
             tickangle=-45,
             showgrid=True,
-            gridcolor="rgba(128, 128, 128, 0.3)",
+            gridcolor="rgba(128, 128, 128, 1.0)",
+            gridwidth=2,
             griddash="dash",
         ),
         yaxis=dict(
             showticklabels=False,
             title="",
         ),
-        height=400,
-        showlegend=True,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1,
-            title="Script",
-        ),
+        height=300,
+        margin=dict(l=100, r=20, t=0, b=20),
+        showlegend=False,
+        # legend=dict(
+        #     orientation="h",
+        #     yanchor="bottom",
+        #     y=1.02,
+        #     xanchor="right",
+        #     x=1,
+        #     title="",
+        # ),
     )
 
     return fig

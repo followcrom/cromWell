@@ -20,6 +20,10 @@ from components import (
     create_activity_levels_chart,
     create_gps_route_map,
     create_hr_zones_chart,
+    create_daily_activity_levels_comparison,
+    create_daily_calories_comparison,
+    create_daily_hr_zones_comparison,
+    create_daily_steps_comparison,
     activity_metrics_line1,
     activity_metrics_line2,
     activity_metrics_avgs1,
@@ -31,12 +35,16 @@ from components import (
 
 from functions import load_single_date, load_date_range
 
-# Configuration
-DATA_PATH = "/home/followcrom/projects/cromWell/data"
-TIMEZONE = "Europe/London"
+from functions import (
+    DATA_PATH,
+    TIMEZONE,
+    init_session_state,
+    render_sidebar,
+    format_date,
+)
 
 st.set_page_config(
-    page_title="Activity - CromWell Dashboard",
+    page_title="CromWell's Dashboard - Activity",
     page_icon="🏃",
     layout="wide",
 )
@@ -54,72 +62,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-def get_ordinal_suffix(day: int) -> str:
-    """Get ordinal suffix for a day number."""
-    if 10 <= day % 100 <= 20:
-        return "th"
-    return {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
-
-
-def format_date(d: date) -> str:
-    """Format date with ordinal suffix."""
-    day = d.day
-    suffix = get_ordinal_suffix(day)
-    return d.strftime(f"%A {day}{suffix} %B %Y")
-
-
-def init_session_state():
-    """Initialize session state."""
-    if "date_mode" not in st.session_state:
-        st.session_state.date_mode = "Single Date"
-    if "selected_date" not in st.session_state:
-        st.session_state.selected_date = date.today() - timedelta(days=1)
-    if "start_date" not in st.session_state:
-        st.session_state.start_date = date.today() - timedelta(days=7)
-    if "end_date" not in st.session_state:
-        st.session_state.end_date = date.today() - timedelta(days=1)
-
-
-def render_sidebar():
-    """Render sidebar with date controls."""
-    with st.sidebar:
-        st.title("Fitbit Dashboard")
-        st.markdown("---")
-
-        st.session_state.date_mode = st.radio(
-            "Date Selection",
-            ["Single Date", "Date Range"],
-            index=0 if st.session_state.date_mode == "Single Date" else 1,
-        )
-
-        st.markdown("---")
-
-        if st.session_state.date_mode == "Single Date":
-            st.session_state.selected_date = st.date_input(
-                "Select Date",
-                value=st.session_state.selected_date,
-                max_value=date.today(),
-            )
-        else:
-            col1, col2 = st.columns(2)
-            with col1:
-                st.session_state.start_date = st.date_input(
-                    "Start Date",
-                    value=st.session_state.start_date,
-                    max_value=date.today(),
-                )
-            with col2:
-                st.session_state.end_date = st.date_input(
-                    "End Date",
-                    value=st.session_state.end_date,
-                    max_value=date.today(),
-                )
-
-        st.markdown("---")
-        st.markdown("### Navigation")
-        st.page_link("app.py", label="Home", icon="🏠")
-        st.page_link("pages/1_Activity.py", label="Activity", icon="🏃")
-        st.page_link("pages/2_Sleep.py", label="Sleep", icon="😴")
 
 
 @st.cache_data(ttl=300)
@@ -153,6 +95,7 @@ def render_single_day_activity(dfs: dict, selected_date: date):
 
     df_hr = dfs.get("HeartRate_Intraday")
     df_activities = dfs.get("ActivityRecords")
+    df_steps = dfs.get("Steps_Intraday")
 
     if df_hr is not None and not df_hr.empty:
         fig = create_hr_timeline(
@@ -166,9 +109,9 @@ def render_single_day_activity(dfs: dict, selected_date: date):
 
     # Hourly Steps and Activity Levels side by side
     # st.subheader("Hourly Steps")
-    df_steps = dfs.get("Steps_Intraday")
+
     if df_steps is not None and not df_steps.empty:
-        fig_steps = create_hourly_steps_chart(df_steps)
+        fig_steps = create_hourly_steps_chart(df_steps, 500, title="Hourly Steps")
         st.plotly_chart(fig_steps, width='stretch')
     else:
         st.info("No steps data available")
@@ -177,13 +120,9 @@ def render_single_day_activity(dfs: dict, selected_date: date):
     col1, col2 = st.columns(2)
 
     with col1:
-        zone_data = calculate_hr_zone_data(df_hr)
-        if zone_data:
-            # st.subheader("Time in Heart Rate Zones")
-            fig_zones = create_hr_zones_chart(zone_data)
-            st.plotly_chart(fig_zones, width='stretch')
-        else:
-            st.info("No heart rate data available for this date")
+        date_str = selected_date.strftime("%Y-%m-%d")
+        fig_zones = create_hr_zones_chart(dfs, date_str)
+        st.plotly_chart(fig_zones, width='stretch')
 
     with col2:
         # st.subheader("Activity Levels")
@@ -242,7 +181,7 @@ def render_multi_day_activity(dfs: dict, start_date: date, end_date: date):
 
         for idx, (_, activity) in enumerate(df_activities.sort_values("time").iterrows()):
             activity_name = activity.get("ActivityName", "Unknown")
-            with st.expander(f"{activity_name} - {activity['time'].strftime('%m-%d-%y')}"):
+            with st.expander(f"{activity_name} at {activity['time'].strftime('%H:%M on %d/%m/%y')}"):
                 render_activity_details(activity, df_hr, dfs.get("GPS"))
 
     # Hourly Steps pattern (averaged across all days)
@@ -269,6 +208,32 @@ def render_multi_day_activity(dfs: dict, start_date: date, end_date: date):
         st.plotly_chart(fig_steps, width='stretch')
     else:
         st.info("No steps data available")
+
+    # Daily Comparison Section
+    st.markdown("---")
+    st.subheader("Daily Comparison")
+
+    # Row 1: Activity Levels, Steps, Calories
+    col1, col2 = st.columns(2)
+
+    with col1:
+        fig_steps = create_daily_steps_comparison(dfs)
+        st.plotly_chart(fig_steps, use_container_width=True)
+
+    with col2:
+        fig_calories = create_daily_calories_comparison(dfs)
+        st.plotly_chart(fig_calories, use_container_width=True)
+
+    # Row 2: HR Zones (absolute) and HR Zones (normalized)
+    st.markdown("---")
+    col1, col2 = st.columns(2)
+
+    with col1:
+        fig_activity_levels = create_daily_activity_levels_comparison(dfs)
+        st.plotly_chart(fig_activity_levels, use_container_width=True)
+    with col2:
+        fig_hr_zones_norm = create_daily_hr_zones_comparison(dfs)
+        st.plotly_chart(fig_hr_zones_norm, use_container_width=True)
 
 
 def render_activity_details(activity: pd.Series, df_hr: pd.DataFrame, df_gps: pd.DataFrame):
@@ -319,11 +284,11 @@ def render_activity_details(activity: pd.Series, df_hr: pd.DataFrame, df_gps: pd
                 )
                 st.plotly_chart(fig, width='stretch')
 
-                # # HR stats
-                # vals = activity_hr["value"]
-                # st.markdown(
-                #     f"**HR Stats:** Min: {vals.min():.0f} | Avg: {vals.mean():.0f} | Max: {vals.max():.0f} bpm"
-                # )
+                # HR stats
+                vals = activity_hr["value"]
+                st.markdown(
+                    f"**HR Stats:** Min: {vals.min():.0f} | Avg: {vals.mean():.0f} | Max: {vals.max():.0f} bpm"
+                )
         except Exception as e:
             st.warning(f"Could not analyze activity HR: {e}")
 
@@ -332,7 +297,7 @@ def render_activity_details(activity: pd.Series, df_hr: pd.DataFrame, df_gps: pd
     if "walk" in activity_name and df_gps is not None and not df_gps.empty:
         try:
             activity_start, activity_end, _ = extract_activity_time_window(
-                activity, TIMEZONE
+                activity
             )
 
             # Filter GPS data for this activity

@@ -2,34 +2,13 @@
 
 A Streamlit-based interactive dashboard for analyzing Fitbit data with Plotly visualizations.
 
-## Features
-
-### Homepage
-- **Interactive Calendar**: Browse available data by month with color-coded dates
-  - 🟢 Green = Data available
-  - 🔵 Blue = Today
-  - 🔴 Red = Selected date
-- Click any date to instantly view its data
-- Month navigation with Prev/Next buttons
-
-### Activity Analysis
-- Heart rate timeline with zone tracking (range slider disabled by default)
-- Hourly steps distribution
-- Activity levels breakdown (horizontal bar chart)
-- Logged workouts analysis
-- GPS routes for walks
-- Activity metrics: Steps, Resting HR, Distance, Calories
-- Extended metrics: Breathing rate, Logged activities, Active time, Sedentary time
-
-### Sleep Analysis
-- Sleep timeline with stage visualization (27-hour window)
-- Sleep stages breakdown (donut chart)
-- Multi-day sleep trends
-- Nap tracking with separate visualizations
-- Sleep metrics and efficiency
-- Sleep vitals: SpO2, Skin temperature, HRV
-
 ## Running the App
+
+Start the venv:
+
+```bash
+source ../cw_venv/bin/activate
+```
 
 To start the Streamlit dashboard:
 
@@ -50,43 +29,13 @@ Use the sidebar to switch between pages or adjust date selections.
 
 ## Project Structure
 
-```
-cromBoard/
-├── app.py                    # Main application entry point
-├── requirements.txt          # Python dependencies
-├── components/
-│   ├── __init__.py
-│   ├── calendar.py          # Interactive calendar component
-│   ├── metrics.py           # Reusable metric components
-│   └── plots.py             # Plotly chart components
-├── functions/
-│   ├── __init__.py
-│   ├── activity_helpers.py  # Activity data processing
-│   └── load_data.py         # Data loading utilities
-└── pages/
-    ├── 1_Activity.py        # Activity analysis page
-    └── 2_Sleep.py           # Sleep analysis page
-```
+
 
 ## Data
 
 The application expects Fitbit data to be located in a `data` directory at the parent level of this project:
 
-```
-projects/
-├── cromWell/
-│   └── data/                       # Fitbit data files
-│       ├── heartrate_intraday/     # Heart rate data by date
-│       │   ├── date=2025-10-03/
-│       │   ├── date=2025-10-04/
-│       │   └── ...
-│       ├── steps_intraday/         # Steps data by date
-│       ├── daily_summaries.parquet
-│       ├── gps.parquet
-│       └── sleep_levels.parquet
-└── cromBoard/                      # This project
-    └── app.py
-```
+
 
 **Note**: The interactive calendar scans the `heartrate_intraday` directory to determine which dates have available data. Dates without this directory will not appear as available in the calendar.
 
@@ -132,28 +81,6 @@ fig.update_layout(
 )
 ```
 
-### Change Data Path
-
-To point to a different data directory:
-
-1. Open `app.py`
-2. Update the `DATA_PATH` constant (around line 31):
-
-```python
-DATA_PATH = "/your/custom/path/to/data"
-```
-
-### Change Timezone
-
-To use a different timezone:
-
-1. Open `app.py`, `pages/1_Activity.py`, and `pages/2_Sleep.py`
-2. Update the `TIMEZONE` constant:
-
-```python
-TIMEZONE = "America/New_York"  # or your preferred timezone
-```
-
 ### Customize Calendar Colors
 
 The calendar uses emoji indicators by default (🟢, 🔵, 🔴). To modify:
@@ -179,6 +106,16 @@ HR_ZONES = {
 }
 ```
 
+## Modify Sleep Stages Colors
+
+To change the colors used in sleep stage visualizations:
+
+## Modify Activity Levels Colors
+
+## Modify HR Zones Colors
+
+
+
 ### Sidebar Whitespace
 
 The sidebar top padding is set to `0.1rem` for a compact layout. To adjust:
@@ -187,17 +124,5 @@ The sidebar top padding is set to `0.1rem` for a compact layout. To adjust:
 2. Find the CSS section (around line 18-28)
 3. Change `padding-top: 0.1rem;` to your preferred value
 
-## Recent Changes
+### GitHub Badges
 
-### v1.1.0 (Latest)
-- Added interactive calendar to homepage with month navigation
-- Color-coded dates showing data availability (🟢 green), today (🔵 blue), and selected date (🔴 red)
-- Disabled Plotly range slider on heart rate timeline for cleaner view
-- Fixed Activity Levels chart orientation (now displays as horizontal bar chart)
-- Improved metric calculations (Active Time now excludes sedentary minutes)
-- Removed Streamlit's default navigation for cleaner UI
-- Reduced sidebar whitespace for more compact layout
-- Renamed metric functions for better clarity
-  - `display_activity_metrics` → `activity_metrics_line1`
-  - `display_extended_activity_metrics` → `activity_metrics_line2`
-  - `display_activity_summary_table` → `activity_summary_table`

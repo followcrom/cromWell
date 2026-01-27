@@ -17,6 +17,7 @@ from components import (
     plot_sleep_timeline,
     plot_nap_timeline,
     create_sleep_stages_donut,
+    create_sleep_stages_bar,
     create_hourly_steps_chart,
     create_multi_day_sleep_timeline,
     create_consolidated_sleep_timeline,
@@ -25,19 +26,25 @@ from components import (
     display_sleep_sessions_table,
 )
 
-from functions import load_single_date, load_date_range
+from functions import (
+    DATA_PATH,
+    TIMEZONE,
+    load_single_date,
+    load_date_range,
+    init_session_state,
+    render_sidebar,
+    format_date,
+)
 
-# Configuration
-DATA_PATH = "/home/followcrom/projects/cromWell/data"
-TIMEZONE = "Europe/London"
 
 # Sleep stage mapping
 LEVEL_DECODE = {0: "Deep", 1: "Light", 2: "REM", 3: "Awake"}
 
 st.set_page_config(
-    page_title="Sleep - Fitbit Dashboard",
+    page_title="CromWell's Dashboard - Sleep",
     page_icon="😴",
     layout="wide",
+    initial_sidebar_state="expanded"
 )
 
 # Hide Streamlit's default page navigation and reduce top whitespace
@@ -51,74 +58,6 @@ st.markdown("""
         }
     </style>
 """, unsafe_allow_html=True)
-
-
-def get_ordinal_suffix(day: int) -> str:
-    """Get ordinal suffix for a day number."""
-    if 10 <= day % 100 <= 20:
-        return "th"
-    return {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
-
-
-def format_date(d: date) -> str:
-    """Format date with ordinal suffix."""
-    day = d.day
-    suffix = get_ordinal_suffix(day)
-    return d.strftime(f"%A {day}{suffix} %B %Y")
-
-
-def init_session_state():
-    """Initialize session state."""
-    if "date_mode" not in st.session_state:
-        st.session_state.date_mode = "Single Date"
-    if "selected_date" not in st.session_state:
-        st.session_state.selected_date = date.today() - timedelta(days=1)
-    if "start_date" not in st.session_state:
-        st.session_state.start_date = date.today() - timedelta(days=7)
-    if "end_date" not in st.session_state:
-        st.session_state.end_date = date.today() - timedelta(days=1)
-
-
-def render_sidebar():
-    """Render sidebar with date controls."""
-    with st.sidebar:
-        st.title("Fitbit Dashboard")
-        st.markdown("---")
-
-        st.session_state.date_mode = st.radio(
-            "Date Selection",
-            ["Single Date", "Date Range"],
-            index=0 if st.session_state.date_mode == "Single Date" else 1,
-        )
-
-        st.markdown("---")
-
-        if st.session_state.date_mode == "Single Date":
-            st.session_state.selected_date = st.date_input(
-                "Select Date",
-                value=st.session_state.selected_date,
-                max_value=date.today(),
-            )
-        else:
-            col1, col2 = st.columns(2)
-            with col1:
-                st.session_state.start_date = st.date_input(
-                    "Start Date",
-                    value=st.session_state.start_date,
-                    max_value=date.today(),
-                )
-            with col2:
-                st.session_state.end_date = st.date_input(
-                    "End Date",
-                    value=st.session_state.end_date,
-                    max_value=date.today(),
-                )
-
-        st.markdown("---")
-        st.markdown("### Navigation")
-        st.page_link("app.py", label="Home", icon="🏠")
-        st.page_link("pages/1_Activity.py", label="Activity", icon="🏃")
-        st.page_link("pages/2_Sleep.py", label="Sleep", icon="😴")
 
 
 @st.cache_data(ttl=300)
@@ -166,8 +105,8 @@ def extract_and_preprocess_sleep_data(dfs: dict) -> tuple:
 def render_single_day_sleep(dfs: dict, selected_date: date):
     """Render sleep analysis for a single day."""
     formatted = format_date(selected_date)
-    st.title("Sleep Well Crom?")
-    st.markdown(f"### {formatted}")
+    st.title("Single-Day Sleep Analysis")
+    st.markdown(f"## {formatted}")
 
     df_levels, df_summary = extract_and_preprocess_sleep_data(dfs)
 
@@ -177,6 +116,7 @@ def render_single_day_sleep(dfs: dict, selected_date: date):
 
     # Metrics row
     st.markdown("---")
+    st.subheader("Main Sleep Summary")
     display_sleep_metrics(dfs)
     display_sleep_vitals(dfs)
 
@@ -187,11 +127,10 @@ def render_single_day_sleep(dfs: dict, selected_date: date):
 
     # ==========================================================================
     # MAIN SLEEP TIMELINE: 27-hour window from 21:00 to 00:00 next day
-    # This matches the notebook's plot_sleep_timeline behavior
     # Window is based on wake-up time (end_time) of main sleep session
     # ==========================================================================
     st.markdown("---")
-    st.subheader("Sleep Timeline")
+    st.subheader(f"Sleep Timeline for {formatted}")
 
     if df_levels is not None and not df_levels.empty:
         # Get main sleep for window calculation
@@ -202,15 +141,17 @@ def render_single_day_sleep(dfs: dict, selected_date: date):
         main_session = main_sleep.iloc[0]
         sleep_start = main_session["time"]
         sleep_end = main_session.get("end_time") or main_session.get("endTime")
+        print(f"Number of end_time entries: {df_summary['end_time'].notna().sum()}")
+        print(f"Number of endTime entries: {df_summary['endTime'].notna().sum()}")
 
         # Display sleep times
         col1, col2 = st.columns(2)
         with col1:
-            st.info(f"To Bed: {sleep_start.strftime('%H:%M on %A')}")
+            st.info(f"To Bed: {sleep_start.strftime('%H:%M')} on {formatted}")
         with col2:
             if sleep_end:
                 end_ts = pd.to_datetime(sleep_end)
-                st.info(f"Wake Up: {end_ts.strftime('%H:%M on %A')}")
+                st.info(f"Wake Up: {end_ts.strftime('%H:%M')} on {formatted}")
 
         fig = plot_sleep_timeline(
             df_levels,
@@ -221,64 +162,13 @@ def render_single_day_sleep(dfs: dict, selected_date: date):
     else:
         st.info("No detailed sleep stage data available")
 
-    # Hourly Steps and Activity Levels side by side
-    # st.subheader("Hourly Steps")
+    # Hourly Steps
     df_steps = dfs.get("Steps_Intraday")
     if df_steps is not None and not df_steps.empty:
-        fig_steps = create_hourly_steps_chart(df_steps)
+        fig_steps = create_hourly_steps_chart(df_steps, 340, title="")
         st.plotly_chart(fig_steps, width='stretch')
     else:
         st.info("No steps data available")
-
-    # Sleep Stages Donut and Hourly Steps side by side
-    st.markdown("---")
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.subheader("Sleep Composition")
-        fig_donut = create_sleep_stages_donut(df_summary, title="Sleep Stages")
-        st.plotly_chart(fig_donut, width='stretch')
-
-    with col2:
-        st.subheader("Sleep Stage Durations")
-
-        # Get main sleep session
-        main_sleep = df_summary[df_summary.get("isMainSleep", "True") == "True"]
-        if main_sleep.empty:
-            main_sleep = df_summary.iloc[[0]]
-
-        summary = main_sleep.iloc[0]
-
-        # Create bar chart data
-        stages = ["Deep", "Light", "REM", "Awake"]
-        minutes = [
-            summary.get("minutesDeep", 0),
-            summary.get("minutesLight", 0),
-            summary.get("minutesREM", 0),
-            summary.get("minutesAwake", 0),
-        ]
-
-        # Create bar chart
-        import plotly.graph_objects as go
-
-        fig_bars = go.Figure()
-        fig_bars.add_trace(go.Bar(
-            x=stages,
-            y=minutes,
-            marker_color=["#0f172a", "#a5d8ff", "#c084fc", "#fde047"],
-            text=[f"{int(m)}m" for m in minutes],
-            textposition="outside",
-        ))
-
-        fig_bars.update_layout(
-            title="Minutes per Stage",
-            xaxis_title="Sleep Stage",
-            yaxis_title="Minutes",
-            height=600,
-            showlegend=False,
-        )
-
-        st.plotly_chart(fig_bars, width='stretch')
 
     # ==========================================================================
     # NAPS SECTION: Separate timeline visualization for each nap
@@ -287,19 +177,32 @@ def render_single_day_sleep(dfs: dict, selected_date: date):
     naps = df_summary[df_summary.get("isMainSleep", "True") == "False"]
     if not naps.empty:
         st.markdown("---")
-        st.subheader(f"Naps ({len(naps)} found)")
+        st.subheader(f"{len(naps)} x Naps found for {formatted}")
 
         # Create nap timeline visualizations (one figure per nap)
         nap_figures = plot_nap_timeline(df_levels, df_summary)
         if nap_figures is not None:
             for fig in nap_figures:
                 st.plotly_chart(fig, use_container_width=True)
+    
+
+    # Sleep Stages Donut and Bar Chart side by side
+    st.markdown("---")
+    col1, col2 = st.columns(2)
+
+    with col1:
+        fig_donut = create_sleep_stages_donut(df_summary)
+        st.plotly_chart(fig_donut, width='stretch')
+
+    with col2:
+        fig_bar = create_sleep_stages_bar(df_summary)
+        st.plotly_chart(fig_bar, width='stretch')
 
 
 def render_multi_day_sleep(dfs: dict, start_date: date, end_date: date):
     """Render sleep analysis for multiple days."""
     st.title("Multi-Day Sleep Analysis")
-    st.markdown(f"### {format_date(start_date)} to {format_date(end_date)}")
+    st.markdown(f"## {format_date(start_date)} to {format_date(end_date)}")
 
     df_levels, df_summary = extract_and_preprocess_sleep_data(dfs)
 
@@ -309,92 +212,58 @@ def render_multi_day_sleep(dfs: dict, start_date: date, end_date: date):
 
     # Summary metrics (averaged)
     st.markdown("---")
-    st.subheader("Sleep Summary")
+    st.subheader("Main Sleeps Summary")
 
     main_sleeps = df_summary[df_summary.get("isMainSleep", "True") == "True"]
     if not main_sleeps.empty:
         col1, col2, col3, col4 = st.columns(4)
 
         with col1:
+            avg_mins_in_bed = main_sleeps["minutesInBed"].mean()
+            hours = int(avg_mins_in_bed // 60)
+            mins = int(avg_mins_in_bed % 60)
+            st.metric("Avg Time in Bed", f"{hours}h {mins}m")
+
+
+        with col2:
             avg_asleep = main_sleeps["minutesAsleep"].mean()
             hours = int(avg_asleep // 60)
             mins = int(avg_asleep % 60)
             st.metric("Avg Time Asleep", f"{hours}h {mins}m")
 
-        with col2:
-            avg_efficiency = main_sleeps["efficiency"].mean()
-            st.metric("Avg Efficiency", f"{avg_efficiency:.0f}%")
-
         with col3:
             avg_deep = main_sleeps.get("minutesDeep", pd.Series([0])).mean()
-            st.metric("Avg Deep Sleep", f"{int(avg_deep)} min")
+            avg_deep_pct = (avg_deep / avg_asleep * 100) if avg_asleep > 0 else 0
+            st.metric("Avg Deep Sleep", f"{int(avg_deep)}m ({avg_deep_pct:.0f}%)")
 
         with col4:
             avg_rem = main_sleeps.get("minutesREM", pd.Series([0])).mean()
-            st.metric("Avg REM Sleep", f"{int(avg_rem)} min")
+            avg_rem_pct = (avg_rem / avg_asleep * 100) if avg_asleep > 0 else 0
+            st.metric("Avg REM Sleep", f"{int(avg_rem)}m ({avg_rem_pct:.0f}%)")
 
         # Second row of metrics for vitals and times
         st.markdown("")  # Add some spacing
-        col1, col2, col3, col4, col5 = st.columns(5)
+        col1, col2, col3, col4 = st.columns(4)
 
         with col1:
-            # Average SpO2
-            spo2_data = dfs.get("SPO2_Daily")
-            if spo2_data is not None and not spo2_data.empty and "value" in spo2_data.columns:
-                avg_spo2 = spo2_data["value"].mean()
-                st.metric("Avg SpO2", f"{avg_spo2:.1f}%")
-            else:
-                st.metric("Avg SpO2", "N/A")
+            hrv_data = dfs.get("HRV")
+            avg_hrv = hrv_data["dailyRmssd"].mean()
+            st.metric("Avg HRV", f"{avg_hrv:.1f} ms")
 
         with col2:
-            # Average Skin Temperature
-            temp_data = dfs.get("SkinTemperature")
-            if temp_data is not None and not temp_data.empty and "value" in temp_data.columns:
-                avg_temp = temp_data["value"].mean()
-                st.metric("Avg Skin Temp", f"{avg_temp:.2f}°C")
-            else:
-                st.metric("Avg Skin Temp", "N/A")
+            spo2_data = dfs.get("SPO2_Daily")
+            avg_spo2 = spo2_data["avg"].mean()
+            st.metric("Avg Blood Oxygen Saturation", f"{avg_spo2:.1f}%")
 
         with col3:
-            # Average HRV
-            hrv_data = dfs.get("HRV")
-            if hrv_data is not None and not hrv_data.empty:
-                # HRV data might be in dailyRmssd column
-                if "dailyRmssd" in hrv_data.columns:
-                    avg_hrv = hrv_data["dailyRmssd"].mean()
-                elif "value" in hrv_data.columns:
-                    avg_hrv = hrv_data["value"].mean()
-                else:
-                    avg_hrv = None
-
-                if avg_hrv is not None:
-                    st.metric("Avg HRV", f"{avg_hrv:.1f} ms")
-                else:
-                    st.metric("Avg HRV", "N/A")
-            else:
-                st.metric("Avg HRV", "N/A")
+            temp_data = dfs.get("SkinTemperature")
+            avg_temp = temp_data["nightlyRelative"].mean()
+            st.metric("Avg Skin Temp", f"{avg_temp:.2f}°C")
 
         with col4:
-            # Average Bed Time
-            avg_bed_time = main_sleeps["time"].dt.time.apply(
-                lambda t: t.hour + t.minute/60
-            ).mean()
-            hours = int(avg_bed_time)
-            mins = int((avg_bed_time % 1) * 60)
-            st.metric("Avg Bed Time", f"{hours:02d}:{mins:02d}")
-
-        with col5:
-            # Average Wake Time
-            main_sleeps_with_end = main_sleeps[main_sleeps["end_time"].notna()]
-            if not main_sleeps_with_end.empty:
-                avg_wake_time = main_sleeps_with_end["end_time"].dt.time.apply(
-                    lambda t: t.hour + t.minute/60
-                ).mean()
-                hours = int(avg_wake_time)
-                mins = int((avg_wake_time % 1) * 60)
-                st.metric("Avg Wake Time", f"{hours:02d}:{mins:02d}")
-            else:
-                st.metric("Avg Wake Time", "N/A")
+            efficiency_data = main_sleeps.get("efficiency")
+            avg_efficiency = efficiency_data.mean()
+            st.metric("Avg Sleep Efficiency", f"{avg_efficiency:.1f}%")
 
     # All sleep sessions table
     st.markdown("---")

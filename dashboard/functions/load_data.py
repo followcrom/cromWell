@@ -229,11 +229,3 @@ def load_date_range(start_date, end_date, parquet_path='../data', timezone='Euro
     print(f"   💾 Memory used: {total_memory_mb:.1f} MB")
     
     return combined_dfs
-
-
-def get_ordinal_suffix(day):
-    if 10 <= day % 100 <= 20:
-        suffix = 'th'
-    else:
-        suffix = {1: 'st', 2: 'nd', 3: 'rd'}.get(day % 10, 'th')
-    return suffix
