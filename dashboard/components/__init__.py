@@ -19,6 +19,11 @@ from .sleep_plots import (
     create_sleep_stages_bar,
     create_multi_day_sleep_timeline,
     create_consolidated_sleep_timeline,
+    create_spo2_trend_chart,
+    create_hrv_trend_chart,
+    create_skin_temp_trend_chart,
+    create_sleep_efficiency_trend_chart,
+    create_sleep_stages_stacked_histogram,
 )
 
 from .act_metrics import (
@@ -56,6 +61,11 @@ __all__ = [
     "create_hr_zones_chart",
     "create_multi_day_sleep_timeline",
     "create_consolidated_sleep_timeline",
+    "create_spo2_trend_chart",
+    "create_hrv_trend_chart",
+    "create_skin_temp_trend_chart",
+    "create_sleep_efficiency_trend_chart",
+    "create_sleep_stages_stacked_histogram",
     "create_daily_activity_levels_comparison",
     "create_daily_hr_zones_comparison",
     "create_daily_calories_comparison",

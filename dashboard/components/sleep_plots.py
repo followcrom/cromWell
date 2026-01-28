@@ -949,6 +949,420 @@ def create_consolidated_sleep_timeline(
     return fig
 
 
+def create_spo2_trend_chart(dfs: Dict[str, pd.DataFrame]) -> go.Figure:
+    """
+    Create a bar chart showing SpO2 average values over time.
+
+    Args:
+        dfs: Dictionary of dataframes containing SPO2_Daily data
+
+    Returns:
+        Plotly Figure object
+    """
+    df_spo2 = dfs.get("SPO2_Daily")
+
+    if df_spo2 is None or df_spo2.empty:
+        return _create_empty_chart("No SpO2 data available")
+
+    df = df_spo2.copy()
+
+    # Ensure date column exists
+    if 'date' not in df.columns and 'time' in df.columns:
+        df['date'] = pd.to_datetime(df['time']).dt.date
+    elif 'date' in df.columns:
+        df['date'] = pd.to_datetime(df['date']).dt.date
+
+    df = df.sort_values('date')
+
+    if 'avg' not in df.columns:
+        return _create_empty_chart("No SpO2 data available")
+
+    # Format date as string for cleaner x-axis
+    df['date_str'] = pd.to_datetime(df['date']).dt.strftime('%a %d %b')
+
+    fig = go.Figure()
+
+    # Add bar chart with RdYlGn colorscale (red-yellow-green, higher is better)
+    fig.add_trace(go.Bar(
+        x=df['date_str'],
+        y=df['avg'],
+        marker=dict(
+            color=df['avg'],
+            colorscale='Purples',
+            cmin=90,
+            cmax=100,
+            line=dict(width=1, color='purple'),
+            showscale=False,
+        ),
+        name='Avg SpO2',
+        hovertemplate='%{y:.1f}%<extra></extra>',
+    ))
+
+    fig.update_layout(
+        title=dict(text="Blood Oxygen Saturation", font=dict(size=20)),
+        yaxis_title="SpO2 (60-100%)",
+        height=400,
+        hovermode='x unified',
+        showlegend=False,
+        yaxis=dict(range=[60, 100]),
+        xaxis=dict(
+            type='category',
+            tickangle=-45,
+        ),
+    )
+
+    return fig
+
+
+def create_hrv_trend_chart(dfs: Dict[str, pd.DataFrame]) -> go.Figure:
+    """
+    Create a bar chart showing HRV values over time.
+
+    Args:
+        dfs: Dictionary of dataframes containing HRV data
+
+    Returns:
+        Plotly Figure object
+    """
+    df_hrv = dfs.get("HRV")
+
+    if df_hrv is None or df_hrv.empty:
+        return _create_empty_chart("No HRV data available")
+
+    df = df_hrv.copy()
+
+    # Ensure date column exists
+    if 'date' not in df.columns and 'time' in df.columns:
+        df['date'] = pd.to_datetime(df['time']).dt.date
+    elif 'date' in df.columns:
+        df['date'] = pd.to_datetime(df['date']).dt.date
+
+    df = df.sort_values('date')
+
+    if 'dailyRmssd' not in df.columns:
+        return _create_empty_chart("No HRV data available")
+
+    # Format date as string for cleaner x-axis
+    df['date_str'] = pd.to_datetime(df['date']).dt.strftime('%a %d %b')
+
+    fig = go.Figure()
+
+    # Add bar chart with Purples colorscale (higher HRV is better)
+    fig.add_trace(go.Bar(
+        x=df['date_str'],
+        y=df['dailyRmssd'],
+        marker=dict(
+            color=df['dailyRmssd'],
+            colorscale='matter',
+            line=dict(width=1, color='orange'),
+            # colorbar=dict(title="HRV (ms)"), # this is the color scale legend
+            showscale=False,
+        ),
+        name='Daily HRV',
+        hovertemplate='<b>%{x}</b><br>HRV: %{y:.1f} ms<extra></extra>',
+    ))
+
+    fig.update_layout(
+        title=dict(text="Heart Rate Variability", font=dict(size=20)),
+        yaxis_title="HRV (ms)",
+        height=400,
+        hovermode='x unified',
+        showlegend=False,
+        xaxis=dict(
+            type='category',
+            tickangle=-45,
+        ),
+    )
+
+    return fig
+
+
+def create_skin_temp_trend_chart(dfs: Dict[str, pd.DataFrame]) -> go.Figure:
+    """
+    Create a bar chart showing skin temperature variation over time.
+
+    Args:
+        dfs: Dictionary of dataframes containing SkinTemperature data
+
+    Returns:
+        Plotly Figure object
+    """
+    df_temp = dfs.get("SkinTemperature")
+
+    if df_temp is None or df_temp.empty:
+        return _create_empty_chart("No skin temperature data available")
+
+    df = df_temp.copy()
+
+    # Ensure date column exists
+    if 'date' not in df.columns and 'time' in df.columns:
+        df['date'] = pd.to_datetime(df['time']).dt.date
+    elif 'date' in df.columns:
+        df['date'] = pd.to_datetime(df['date']).dt.date
+
+    df = df.sort_values('date')
+
+    if 'nightlyRelative' not in df.columns:
+        return _create_empty_chart("No skin temperature data available")
+
+    # Format date as string for cleaner x-axis
+    df['date_str'] = pd.to_datetime(df['date']).dt.strftime('%a %d %b')
+
+    fig = go.Figure()
+
+    # Add bar chart with RdBu_r colorscale (blue for cold, red for hot)
+    fig.add_trace(go.Bar(
+        x=df['date_str'],
+        y=df['nightlyRelative'],
+        marker=dict(
+            color=df['nightlyRelative'],
+            colorscale='RdBu_r',
+            cmid=0,
+            showscale=False,
+        ),
+        name='Skin Temp',
+        hovertemplate='%{y:+.2f}°C<extra></extra>',
+    ))
+
+    # Add baseline at 0
+    fig.add_hline(
+        y=0,
+        line_dash="solid",
+        line_color="gray",
+        line_width=1,
+        annotation_text="Baseline",
+        annotation_position="left top",
+        annotation_font=dict(color="black"),
+    )
+
+    fig.update_layout(
+        title=dict(text="Skin Temperature Variation", font=dict(size=20)),
+        yaxis_title="Temperature (°C)",
+        height=400,
+        hovermode='x unified',
+        showlegend=False,
+        xaxis=dict(
+            type='category',
+            tickangle=-45,
+        ),
+    )
+
+    return fig
+
+
+def create_sleep_efficiency_trend_chart(dfs: Dict[str, pd.DataFrame]) -> go.Figure:
+    """
+    Create a bar chart showing sleep efficiency over time.
+
+    Args:
+        dfs: Dictionary of dataframes containing SleepSummary data
+
+    Returns:
+        Plotly Figure object
+    """
+    df_summary = dfs.get("SleepSummary")
+
+    if df_summary is None or df_summary.empty:
+        return _create_empty_chart("No sleep efficiency data available")
+
+    # Filter for main sleeps only
+    main_sleeps = df_summary[df_summary.get("isMainSleep", "True") == "True"].copy()
+
+    if main_sleeps.empty:
+        return _create_empty_chart("No main sleep data available")
+
+    # Use wake-up date (endTime) to match Fitbit convention and other sleep metrics
+    # This ensures sleep that starts Jan 20 and ends Jan 21 is assigned to Jan 21
+    if 'endTime' in main_sleeps.columns:
+        main_sleeps['date'] = pd.to_datetime(main_sleeps['endTime'])
+        if main_sleeps['date'].dt.tz is None:
+            main_sleeps['date'] = main_sleeps['date'].dt.tz_localize('UTC')
+        main_sleeps['date'] = main_sleeps['date'].dt.tz_convert(TIMEZONE).dt.date
+    elif 'end_time' in main_sleeps.columns:
+        main_sleeps['date'] = pd.to_datetime(main_sleeps['end_time']).dt.date
+    elif 'date' in main_sleeps.columns:
+        main_sleeps['date'] = pd.to_datetime(main_sleeps['date']).dt.date
+    else:
+        # Fallback to time if no endTime available
+        main_sleeps['date'] = pd.to_datetime(main_sleeps['time']).dt.date
+
+    main_sleeps = main_sleeps.sort_values('date')
+
+    if 'efficiency' not in main_sleeps.columns:
+        return _create_empty_chart("No sleep efficiency data available")
+
+    # Format date as string for cleaner x-axis
+    main_sleeps['date_str'] = pd.to_datetime(main_sleeps['date']).dt.strftime('%a %d %b')
+
+    fig = go.Figure()
+
+    # Add line chart with RdYlGn colorscale (higher efficiency is better)
+    fig.add_trace(go.Scatter(
+        x=main_sleeps['date_str'],
+        y=main_sleeps['efficiency'],
+        mode='lines+markers',
+        line=dict(color='rgb(34, 197, 94)', width=2),
+        fill='tozeroy',
+        fillcolor='rgba(34, 197, 94, 0.2)',
+        marker=dict(
+            size=10,
+            color=main_sleeps['efficiency'],
+            colorscale='algae',
+            cmin=50,
+            cmax=100,
+            colorbar=dict(title="Efficiency %"),
+            showscale=False,
+            line=dict(width=1, color='white'),
+        ),
+        name='Daily Efficiency',
+        hovertemplate='%{y:.1f}%<extra></extra>',
+    ))
+
+    fig.update_layout(
+        title=dict(text="Sleep Efficiency Trend", font=dict(size=20)),
+        yaxis_title="Efficiency (%)",
+        height=400,
+        hovermode='x unified',
+        showlegend=False,
+        yaxis=dict(range=[50, 100]),
+        xaxis=dict(
+            type='category',
+            tickangle=-45,
+        ),
+    )
+
+    return fig
+
+
+def create_sleep_stages_stacked_histogram(dfs: Dict[str, pd.DataFrame]) -> go.Figure:
+    """
+    Create a stacked bar chart showing sleep stage durations for each day.
+
+    Args:
+        dfs: Dictionary of dataframes containing SleepSummary data
+
+    Returns:
+        Plotly Figure object
+    """
+    df_summary = dfs.get("SleepSummary")
+
+    if df_summary is None or df_summary.empty:
+        return _create_empty_chart("No sleep data available")
+
+    # Filter for main sleeps only
+    main_sleeps = df_summary[df_summary.get("isMainSleep", "True") == "True"].copy()
+
+    if main_sleeps.empty:
+        return _create_empty_chart("No main sleep data available")
+
+    # Use wake-up date (endTime) to match Fitbit convention and other sleep metrics
+    if 'endTime' in main_sleeps.columns:
+        main_sleeps['date'] = pd.to_datetime(main_sleeps['endTime'])
+        if main_sleeps['date'].dt.tz is None:
+            main_sleeps['date'] = main_sleeps['date'].dt.tz_localize('UTC')
+        main_sleeps['date'] = main_sleeps['date'].dt.tz_convert(TIMEZONE).dt.date
+    elif 'end_time' in main_sleeps.columns:
+        main_sleeps['date'] = pd.to_datetime(main_sleeps['end_time']).dt.date
+    elif 'date' in main_sleeps.columns:
+        main_sleeps['date'] = pd.to_datetime(main_sleeps['date']).dt.date
+    else:
+        main_sleeps['date'] = pd.to_datetime(main_sleeps['time']).dt.date
+
+    main_sleeps = main_sleeps.sort_values('date')
+
+    # Format date as string for cleaner x-axis
+    main_sleeps['date_str'] = pd.to_datetime(main_sleeps['date']).dt.strftime('%a %d %b')
+
+    # Extract minutes for each stage
+    deep_mins = main_sleeps.get('minutesDeep', pd.Series([0] * len(main_sleeps)))
+    light_mins = main_sleeps.get('minutesLight', pd.Series([0] * len(main_sleeps)))
+    rem_mins = main_sleeps.get('minutesREM', pd.Series([0] * len(main_sleeps)))
+    awake_mins = main_sleeps.get('minutesAwake', pd.Series([0] * len(main_sleeps)))
+
+    fig = go.Figure()
+
+    # Add stacked bars in order: Deep, Light, REM, Awake (with borders)
+    fig.add_trace(go.Bar(
+        x=main_sleeps['date_str'],
+        y=deep_mins,
+        name='Deep',
+        marker=dict(
+            color=SLEEP_COLORS['Deep'],
+        ),
+        hovertemplate='Deep: %{y:.0f} min<extra></extra>',
+    ))
+
+    fig.add_trace(go.Bar(
+        x=main_sleeps['date_str'],
+        y=light_mins,
+        name='Light',
+        marker=dict(
+            color=SLEEP_COLORS['Light'],
+        ),
+        hovertemplate='Light: %{y:.0f} min<extra></extra>',
+    ))
+
+    fig.add_trace(go.Bar(
+        x=main_sleeps['date_str'],
+        y=rem_mins,
+        name='REM',
+        marker=dict(
+            color=SLEEP_COLORS['REM'],
+        ),
+        hovertemplate='REM: %{y:.0f} min<extra></extra>',
+    ))
+
+    fig.add_trace(go.Bar(
+        x=main_sleeps['date_str'],
+        y=awake_mins,
+        name='Awake',
+        marker=dict(
+            color=SLEEP_COLORS['Awake'],
+        ),
+        hovertemplate='Awake: %{y:.0f} min<extra></extra>',
+    ))
+
+    # Add annotations for Time in Bed and Time Asleep
+    for idx, (date_str, deep, light, rem, awake) in enumerate(zip(
+        main_sleeps['date_str'], deep_mins, light_mins, rem_mins, awake_mins
+    )):
+        time_in_bed = deep + light + rem + awake
+        time_asleep = deep + light + rem
+
+        # Convert to hours and minutes
+        in_bed_h = int(time_in_bed // 60)
+        in_bed_m = int(time_in_bed % 60)
+        asleep_h = int(time_asleep // 60)
+        asleep_m = int(time_asleep % 60)
+
+        # Add annotation above the bar
+        fig.add_annotation(
+            x=date_str,
+            y=time_in_bed,
+            text=f"In Bed: {in_bed_h}h {in_bed_m}m<br>Asleep: {asleep_h}h {asleep_m}m",
+            showarrow=False,
+            yshift=15,
+            font=dict(size=12, color='black'),
+            bgcolor='rgba(255, 255, 255, 0.8)',
+            borderpad=5,
+        )
+
+    fig.update_layout(
+        title=dict(text="Sleep Stage Composition by Day", font=dict(size=20)),
+        yaxis_title="Duration (minutes)",
+        height=400,
+        barmode='stack',
+        hovermode='x unified',
+        showlegend=False,
+        xaxis=dict(
+            type='category',
+            tickangle=-45,
+        ),
+    )
+
+    return fig
+
+
 def _create_empty_chart(message: str) -> go.Figure:
     """Create an empty chart with a message."""
     fig = go.Figure()

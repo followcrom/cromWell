@@ -21,6 +21,11 @@ from components import (
     create_hourly_steps_chart,
     create_multi_day_sleep_timeline,
     create_consolidated_sleep_timeline,
+    create_spo2_trend_chart,
+    create_hrv_trend_chart,
+    create_skin_temp_trend_chart,
+    create_sleep_efficiency_trend_chart,
+    create_sleep_stages_stacked_histogram,
     display_sleep_metrics,
     display_sleep_vitals,
     display_sleep_sessions_table,
@@ -147,11 +152,11 @@ def render_single_day_sleep(dfs: dict, selected_date: date):
         # Display sleep times
         col1, col2 = st.columns(2)
         with col1:
-            st.info(f"To Bed: {sleep_start.strftime('%H:%M')} on {formatted}")
+            st.info(f"To Bed: {sleep_start.strftime('%H:%M on %a %d %b')}")
         with col2:
-            if sleep_end:
+            if sleep_end:   
                 end_ts = pd.to_datetime(sleep_end)
-                st.info(f"Wake Up: {end_ts.strftime('%H:%M')} on {formatted}")
+                st.info(f"Get Up: {end_ts.strftime('%H:%M on %a %d %b')}")
 
         fig = plot_sleep_timeline(
             df_levels,
@@ -294,51 +299,34 @@ def render_multi_day_sleep(dfs: dict, start_date: date, end_date: date):
     else:
         st.info("No detailed sleep stage data available for timeline")
 
-    # # Sleep trends
-    # st.markdown("---")
-    # st.subheader("Sleep Trends")
+    # Sleep vitals and efficiency trends
+    st.markdown("---")
+    st.subheader("Sleep Vitals & Efficiency Trends")
 
-    # if not main_sleeps.empty:
-    #     # Create trend data
-    #     main_sleeps_sorted = main_sleeps.sort_values("time")
+    col1, col2 = st.columns(2)
 
-    #     col1, col2 = st.columns(2)
+    with col1:
+        fig_stacked = create_sleep_stages_stacked_histogram(dfs)
+        st.plotly_chart(fig_stacked, use_container_width=True)
 
-    #     with col1:
-    #         # Time asleep trend
-    #         import plotly.express as px
+    with col2:
+        fig_efficiency = create_sleep_efficiency_trend_chart(dfs)
+        st.plotly_chart(fig_efficiency, use_container_width=True)
 
-    #         trend_data = main_sleeps_sorted.copy()
-    #         trend_data["date"] = trend_data["time"].dt.date
-    #         trend_data["hours_asleep"] = trend_data["minutesAsleep"] / 60
 
-    #         fig_trend = px.line(
-    #             trend_data,
-    #             x="date",
-    #             y="hours_asleep",
-    #             markers=True,
-    #             title="Time Asleep Trend",
-    #             labels={"hours_asleep": "Hours", "date": "Date"},
-    #         )
-    #         fig_trend.add_hline(
-    #             y=7, line_dash="dash", line_color="green", annotation_text="7h target"
-    #         )
-    #         st.plotly_chart(fig_trend, width='stretch')
+    col1, col2, col3 = st.columns(3)
 
-    #     with col2:
-    #         # Efficiency trend
-    #         fig_eff = px.line(
-    #             trend_data,
-    #             x="date",
-    #             y="efficiency",
-    #             markers=True,
-    #             title="Sleep Efficiency Trend",
-    #             labels={"efficiency": "Efficiency %", "date": "Date"},
-    #         )
-    #         fig_eff.add_hline(
-    #             y=85, line_dash="dash", line_color="green", annotation_text="85% target"
-    #         )
-    #         st.plotly_chart(fig_eff, width='stretch')
+    with col1:
+        fig_spo2 = create_spo2_trend_chart(dfs)
+        st.plotly_chart(fig_spo2, use_container_width=True)
+    
+    with col2:
+        fig_temp = create_skin_temp_trend_chart(dfs)
+        st.plotly_chart(fig_temp, use_container_width=True)
+
+    with col3:
+        fig_hrv = create_hrv_trend_chart(dfs)
+        st.plotly_chart(fig_hrv, use_container_width=True)
 
 
 def main():
