@@ -58,22 +58,23 @@ def render_calendar(data_path: str, selected_date: date, current_month: date = N
     col1, col2, col3, col4, col5 = st.columns([0.5, 0.5, 2, 0.5, 0.5])
 
     with col2:
-        if st.button("◀ Prev", use_container_width=True):
+        if st.button("◀ Prev", width='stretch'):
             # Go to previous month
             first_of_month = current_month.replace(day=1)
             current_month = (first_of_month - timedelta(days=1))
 
     with col3:
-        st.markdown(f"<h3 style='text-align: center; margin: 0;'>{current_month.strftime('%B %Y')}</h3>",
+        st.markdown(f"<h2 style='text-align: center; margin: 0;'>{current_month.strftime('%B %Y')}</h2>",
                    unsafe_allow_html=True)
 
     with col4:
-        if st.button("Next ▶", use_container_width=True):
+        if st.button("Next ▶", width='stretch'):
             # Go to next month
-            if current_month.month == 12:
-                current_month = current_month.replace(year=current_month.year + 1, month=1)
+            first_of_month = current_month.replace(day=1)
+            if first_of_month.month == 12:
+                current_month = first_of_month.replace(year=first_of_month.year + 1, month=1)
             else:
-                current_month = current_month.replace(month=current_month.month + 1)
+                current_month = first_of_month.replace(month=first_of_month.month + 1)
 
     # Get calendar for the month
     cal = calendar.monthcalendar(current_month.year, current_month.month)
@@ -113,7 +114,7 @@ def render_calendar(data_path: str, selected_date: date, current_month: date = N
                     if is_selected:
                         label = f"🔴 {day}"
                         button_type = "primary"
-                    elif is_today and has_data:
+                    elif is_today:
                         label = f"🔵 {day}"
                         button_type = "secondary"
                     elif has_data and not is_future:
@@ -128,7 +129,7 @@ def render_calendar(data_path: str, selected_date: date, current_month: date = N
                         key=f"cal_{current_month.year}_{current_month.month}_{day}",
                         disabled=disabled,
                         type=button_type,
-                        use_container_width=True
+                        width='stretch'
                     ):
                         new_selected_date = dt
 

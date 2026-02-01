@@ -933,7 +933,7 @@ def create_consolidated_sleep_timeline(
             showticklabels=False,
             title="",
         ),
-        height=300,
+        height=250,
         margin=dict(l=100, r=20, t=0, b=20),
         showlegend=False,
         # legend=dict(
@@ -1000,11 +1000,11 @@ def create_spo2_trend_chart(dfs: Dict[str, pd.DataFrame]) -> go.Figure:
 
     fig.update_layout(
         title=dict(text="Blood Oxygen Saturation", font=dict(size=20)),
-        yaxis_title="SpO2 (60-100%)",
+        yaxis_title="SpO2 (80-100%)",
         height=400,
         hovermode='x unified',
         showlegend=False,
-        yaxis=dict(range=[60, 100]),
+        yaxis=dict(range=[80, 100]),
         xaxis=dict(
             type='category',
             tickangle=-45,
@@ -1219,7 +1219,7 @@ def create_sleep_efficiency_trend_chart(dfs: Dict[str, pd.DataFrame]) -> go.Figu
     ))
 
     fig.update_layout(
-        title=dict(text="Sleep Efficiency Trend", font=dict(size=20)),
+        title=dict(text="Sleep Efficiency", font=dict(size=20)),
         yaxis_title="Efficiency (%)",
         height=400,
         hovermode='x unified',
@@ -1261,12 +1261,15 @@ def create_sleep_stages_stacked_histogram(dfs: Dict[str, pd.DataFrame]) -> go.Fi
         if main_sleeps['date'].dt.tz is None:
             main_sleeps['date'] = main_sleeps['date'].dt.tz_localize('UTC')
         main_sleeps['date'] = main_sleeps['date'].dt.tz_convert(TIMEZONE).dt.date
-    elif 'end_time' in main_sleeps.columns:
-        main_sleeps['date'] = pd.to_datetime(main_sleeps['end_time']).dt.date
+    # elif 'end_time' in main_sleeps.columns:
+    #     main_sleeps['date'] = pd.to_datetime(main_sleeps['end_time']).dt.date
     elif 'date' in main_sleeps.columns:
         main_sleeps['date'] = pd.to_datetime(main_sleeps['date']).dt.date
     else:
         main_sleeps['date'] = pd.to_datetime(main_sleeps['time']).dt.date
+
+    print("Number of EndTime entries:", main_sleeps['endTime'].nunique())
+    # print("Number of end_time entries:", main_sleeps['end_time'].nunique())
 
     main_sleeps = main_sleeps.sort_values('date')
 
@@ -1343,17 +1346,19 @@ def create_sleep_stages_stacked_histogram(dfs: Dict[str, pd.DataFrame]) -> go.Fi
             showarrow=False,
             yshift=15,
             font=dict(size=12, color='black'),
-            bgcolor='rgba(255, 255, 255, 0.8)',
+            bgcolor='rgba(211, 211, 211, 0.8)',  # Light grey background
             borderpad=5,
+            bordercolor='gray',
+            borderwidth=1,
         )
 
     fig.update_layout(
-        title=dict(text="Sleep Stage Composition by Day", font=dict(size=20)),
-        yaxis_title="Duration (minutes)",
+        yaxis_title="Minutes",
         height=400,
         barmode='stack',
         hovermode='x unified',
         showlegend=False,
+        margin=dict(t=10),
         xaxis=dict(
             type='category',
             tickangle=-45,

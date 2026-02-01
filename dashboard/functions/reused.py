@@ -83,4 +83,5 @@ def render_sidebar():
         st.page_link("pages/2_Sleep.py", label="Sleep", icon="😴")
 
         st.markdown("---")
-        st.caption(f"Data path: {DATA_PATH}")
+        st.page_link("https://followcrom.com/", label="followCrom", icon="🌐")
+        st.caption("followCrom © 2026")

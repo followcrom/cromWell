@@ -43,6 +43,10 @@ def main():
 
     # Main content area
     st.title("CromWell's Dashboard")
+    st.image("https://followcrom.com/images/vinyl.png", caption="Dashboard Overview", width=200)
+    with st.expander("CromWell's Motto"):
+        "Hello, CromWellians! Welcome to your personal fitness dashboard."
+
     st.info("Go, get out, make haste ye venal slaves. I will put an end to your prating. - Oliver Cromwell to the House of Commons, 1653")
 
     if st.session_state.date_mode == "Single Date":
@@ -54,40 +58,9 @@ def main():
         st.markdown(f"### {start_formatted} to {end_formatted}")
 
     st.markdown("---")
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.markdown("""
-        ### Activity Analysis
-
-        View your daily activity metrics including:
-        - Heart rate timeline with zone tracking
-        - Hourly steps distribution
-        - Activity levels breakdown
-        - Logged workouts analysis
-        - GPS routes for walks
-        """)
-        st.page_link("pages/1_Activity.py", label="Go to Activity →", icon="🏃")
-
-    with col2:
-        st.markdown("""
-        ### Sleep Analysis
-
-        Explore your sleep patterns:
-        - Sleep timeline with stage visualization
-        - Sleep stages breakdown (donut chart)
-        - Multi-day sleep trends
-        - Nap tracking
-        - Sleep metrics and efficiency
-        - Add HRV, right?
-        """)
-        st.page_link("pages/2_Sleep.py", label="Go to Sleep →", icon="😴")
-
-    st.markdown("---")
 
     # Interactive Calendar
     st.markdown("### 📅 Select a Date")
-    st.markdown("Click on any date with a 🟢 to view data for that day.")
 
     # Render calendar and handle date selection
     new_date, new_month = render_calendar(
@@ -105,6 +78,36 @@ def main():
     if new_month != st.session_state.calendar_month:
         st.session_state.calendar_month = new_month
         st.rerun()
+
+    st.markdown("---")
+    col1, col2 = st.columns(2)
+
+    with col1:
+        # st.markdown("""
+        # ### Activity Analysis
+
+        # View your daily activity metrics including:
+        # - Heart rate timeline with zone tracking
+        # - Hourly steps distribution
+        # - Activity levels breakdown
+        # - Logged workouts analysis
+        # - GPS routes for walks
+        # """)
+        st.page_link("pages/1_Activity.py", label="Go to Activity →", icon="🏃")
+
+    with col2:
+        # st.markdown("""
+        # ### Sleep Analysis
+
+        # Explore your sleep patterns:
+        # - Sleep timeline with stage visualization
+        # - Sleep stages breakdown (donut chart)
+        # - Multi-day sleep trends
+        # - Nap tracking
+        # - Sleep metrics and efficiency
+        # - Add HRV, right?
+        # """)
+        st.page_link("pages/2_Sleep.py", label="Go to Sleep →", icon="😴")
 
 if __name__ == "__main__":
     main()

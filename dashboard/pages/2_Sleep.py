@@ -103,6 +103,7 @@ def extract_and_preprocess_sleep_data(dfs: dict) -> tuple:
             if df_summary["end_time"].dt.tz is None:
                 df_summary["end_time"] = df_summary["end_time"].dt.tz_localize("UTC")
             df_summary["end_time"] = df_summary["end_time"].dt.tz_convert(TIMEZONE)
+            df_summary = df_summary.drop(columns=["endTime"]) # we can drop endTime because we have end_time now, which is tz-aware
 
     return df_levels, df_summary
 
@@ -147,7 +148,6 @@ def render_single_day_sleep(dfs: dict, selected_date: date):
         sleep_start = main_session["time"]
         sleep_end = main_session.get("end_time") or main_session.get("endTime")
         print(f"Number of end_time entries: {df_summary['end_time'].notna().sum()}")
-        print(f"Number of endTime entries: {df_summary['endTime'].notna().sum()}")
 
         # Display sleep times
         col1, col2 = st.columns(2)
@@ -182,13 +182,13 @@ def render_single_day_sleep(dfs: dict, selected_date: date):
     naps = df_summary[df_summary.get("isMainSleep", "True") == "False"]
     if not naps.empty:
         st.markdown("---")
-        st.subheader(f"{len(naps)} x Naps found for {formatted}")
+        st.subheader(f"Nap Tracking: {len(naps)} x naps found for {formatted}")
 
         # Create nap timeline visualizations (one figure per nap)
         nap_figures = plot_nap_timeline(df_levels, df_summary)
         if nap_figures is not None:
             for fig in nap_figures:
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='content')
     
 
     # Sleep Stages Donut and Bar Chart side by side
@@ -207,7 +207,7 @@ def render_single_day_sleep(dfs: dict, selected_date: date):
 def render_multi_day_sleep(dfs: dict, start_date: date, end_date: date):
     """Render sleep analysis for multiple days."""
     st.title("Multi-Day Sleep Analysis")
-    st.markdown(f"## {format_date(start_date)} to {format_date(end_date)}")
+    st.markdown(f"## {format_date(start_date)} - {format_date(end_date)}")
 
     df_levels, df_summary = extract_and_preprocess_sleep_data(dfs)
 
@@ -217,7 +217,7 @@ def render_multi_day_sleep(dfs: dict, start_date: date, end_date: date):
 
     # Summary metrics (averaged)
     st.markdown("---")
-    st.subheader("Main Sleeps Summary")
+    # st.subheader("Main Sleeps Summary")
 
     main_sleeps = df_summary[df_summary.get("isMainSleep", "True") == "True"]
     if not main_sleeps.empty:
@@ -272,7 +272,7 @@ def render_multi_day_sleep(dfs: dict, start_date: date, end_date: date):
 
     # All sleep sessions table
     st.markdown("---")
-    st.subheader("Sleep Sessions by Day")
+    # st.subheader("Sleep Sessions by Day")
     display_sleep_sessions_table(dfs)
 
     # Multi-day timeline
@@ -290,7 +290,7 @@ def render_multi_day_sleep(dfs: dict, start_date: date, end_date: date):
         st.plotly_chart(fig, width='stretch')
 
         # Consolidated timeline
-        st.markdown("---")
+        # st.markdown("---")
         st.subheader("Consolidated Sleep Timeline")
         fig_consolidated = create_consolidated_sleep_timeline(
             df_levels, df_summary, date_strs, TIMEZONE
@@ -301,32 +301,32 @@ def render_multi_day_sleep(dfs: dict, start_date: date, end_date: date):
 
     # Sleep vitals and efficiency trends
     st.markdown("---")
-    st.subheader("Sleep Vitals & Efficiency Trends")
+    st.subheader("Sleep Trends by Day")
+
+    fig_stacked = create_sleep_stages_stacked_histogram(dfs)
+    st.plotly_chart(fig_stacked, width='stretch')
+
 
     col1, col2 = st.columns(2)
 
     with col1:
-        fig_stacked = create_sleep_stages_stacked_histogram(dfs)
-        st.plotly_chart(fig_stacked, use_container_width=True)
-
-    with col2:
-        fig_efficiency = create_sleep_efficiency_trend_chart(dfs)
-        st.plotly_chart(fig_efficiency, use_container_width=True)
-
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
         fig_spo2 = create_spo2_trend_chart(dfs)
-        st.plotly_chart(fig_spo2, use_container_width=True)
-    
+        st.plotly_chart(fig_spo2, width='stretch')
+
     with col2:
         fig_temp = create_skin_temp_trend_chart(dfs)
-        st.plotly_chart(fig_temp, use_container_width=True)
+        st.plotly_chart(fig_temp, width='stretch')
 
-    with col3:
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        fig_efficiency = create_sleep_efficiency_trend_chart(dfs)
+        st.plotly_chart(fig_efficiency, width='stretch')
+    
+    with col2:
         fig_hrv = create_hrv_trend_chart(dfs)
-        st.plotly_chart(fig_hrv, use_container_width=True)
+        st.plotly_chart(fig_hrv, width='stretch')
 
 
 def main():

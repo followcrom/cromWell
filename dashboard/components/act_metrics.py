@@ -176,14 +176,10 @@ def activity_metrics_avgs2(dfs: Dict[str, pd.DataFrame]) -> None:
 
     with col1:
         if df_activity_records is not None and not df_activity_records.empty:
-            # Group by date and count activities per day, then average
-            df_activity_records_copy = df_activity_records.copy()
-            df_activity_records_copy['date'] = pd.to_datetime(df_activity_records_copy['time']).dt.date
-            daily_counts = df_activity_records_copy.groupby('date').size()
-            avg_count = daily_counts.mean()
-            st.metric("Avg Logged Activities", f"{avg_count:.0f}")
+            total_activities = len(df_activity_records)
+            st.metric("Total Logged Activities", total_activities)
         else:
-            st.metric("Avg Logged Activities", "0")
+            st.metric("Total Logged Activities", "0")
 
     with col2:
         if total_distance is not None and not total_distance.empty:
@@ -254,7 +250,7 @@ def activity_summary_table(dfs: Dict[str, pd.DataFrame]) -> None:
             if pd.notna(row.get("distance")) and row.get("distance", 0) > 0
             else "-"
             ),
-            "Calories": int(row.get("calories", 0)),
+            "Calories": f"{int(row.get('calories', 0))} cal",
             "Avg HR": (
             f"{int(row.get('averageHeartRate', 0))} bpm"
             if pd.notna(row.get("averageHeartRate"))

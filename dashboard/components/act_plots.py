@@ -234,8 +234,8 @@ def create_hr_zones_chart(
     if df_date.empty:
         return _create_empty_chart("No HR zone data available for this date")
 
-    # HR zone names using Fitbit's terminology
-    zone_names = ["Out of Range", "Moderate", "Vigorous", "Peak"]
+    # # HR zone names using Fitbit's terminology
+    # zone_names = ["Out of Range", "Moderate", "Vigorous", "Peak"]
 
     # Map to field names in the data
     zone_field_map = {
@@ -454,7 +454,7 @@ def create_daily_steps_comparison(
             y=daily_steps['value'],
             marker=dict(
                 color=daily_steps['value'],
-                colorscale='rainbow',
+                colorscale='speed',
                 showscale=False,
             ),
             text=daily_steps['value'].astype(int),
@@ -683,35 +683,6 @@ def create_daily_hr_zones_comparison(
             textfont=dict(color='blue', size=10),
             hovertemplate='%{fullData.name}: %{y:.0f} mins<extra></extra>',
         ))
-
-    # Add resting heart rate overlay
-    df_resting = dfs.get("RestingHR")
-    if df_resting is not None and not df_resting.empty:
-        resting_hr_data = {}
-        for _, row in df_resting.iterrows():
-            date = row['date']
-            rhr = row.get('value', None)
-            if pd.notna(rhr):
-                resting_hr_data[date] = rhr
-
-        # Get resting HR for sorted dates
-        resting_values = [resting_hr_data.get(date, None) for date in sorted_dates]
-
-        # Only add trace if we have some data
-        if any(v is not None for v in resting_values):
-            fig.add_trace(go.Scatter(
-                name='Resting HR',
-                x=[pd.to_datetime(d).strftime('%a %d %b') for d in sorted_dates],
-                y=resting_values,
-                mode='lines+markers+text',
-                line=dict(color='red', width=2, dash='dash'),
-                marker=dict(size=8, color='white', symbol='diamond'),
-                text=[f'{int(v)} bpm' if v is not None else '' for v in resting_values],
-                textposition='top center',
-                textfont=dict(color='gold', size=12),
-                yaxis='y2',
-                # hovertemplate='Resting HR: %{y:.0f} bpm<extra></extra>',
-            ))
 
     fig.update_layout(
         title=dict(text=title, font=dict(size=22)),
