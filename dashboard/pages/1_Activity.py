@@ -218,11 +218,11 @@ def render_multi_day_activity(dfs: dict, start_date: date, end_date: date):
 
     with col1:
         fig_steps = create_daily_steps_comparison(dfs)
-        st.plotly_chart(fig_steps, use_container_width=True)
+        st.plotly_chart(fig_steps, width='stretch')
 
     with col2:
         fig_calories = create_daily_calories_comparison(dfs)
-        st.plotly_chart(fig_calories, use_container_width=True)
+        st.plotly_chart(fig_calories, width='stretch')
 
     # Row 2: HR Zones (absolute) and HR Zones (normalized)
     st.markdown("---")
@@ -230,10 +230,10 @@ def render_multi_day_activity(dfs: dict, start_date: date, end_date: date):
 
     with col1:
         fig_activity_levels = create_daily_activity_levels_comparison(dfs)
-        st.plotly_chart(fig_activity_levels, use_container_width=True)
+        st.plotly_chart(fig_activity_levels, width='stretch')
     with col2:
         fig_hr_zones_norm = create_daily_hr_zones_comparison(dfs)
-        st.plotly_chart(fig_hr_zones_norm, use_container_width=True)
+        st.plotly_chart(fig_hr_zones_norm, width='stretch')
 
 
 def render_activity_details(activity: pd.Series, df_hr: pd.DataFrame, df_gps: pd.DataFrame):

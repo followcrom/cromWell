@@ -147,7 +147,6 @@ def render_single_day_sleep(dfs: dict, selected_date: date):
         main_session = main_sleep.iloc[0]
         sleep_start = main_session["time"]
         sleep_end = main_session.get("end_time") or main_session.get("endTime")
-        print(f"Number of end_time entries: {df_summary['end_time'].notna().sum()}")
 
         # Display sleep times
         col1, col2 = st.columns(2)

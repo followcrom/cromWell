@@ -395,7 +395,7 @@ Badges can be added to the README by customizing the markdown in [app.py](app.py
 1. Create visualization functions in the appropriate component file (`act_plots.py` or `sleep_plots.py`)
 2. Import the function in the page file (`1_Activity.py` or `2_Sleep.py`)
 3. Call the function within the rendering logic
-4. Ensure all Plotly figures use `use_container_width=True` or `width='stretch'` for responsive design
+4. Ensure all Plotly figures use `width='stretch'` or `width='stretch'` for responsive design
 
 ### Modifying Data Loading
 - Data loading logic is centralized in [functions/load_data.py](functions/load_data.py)

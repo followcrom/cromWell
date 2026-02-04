@@ -134,4 +134,4 @@ def display_sleep_sessions_table(dfs: Dict[str, pd.DataFrame]) -> None:
         )
 
     df_table = pd.DataFrame(records)
-    st.dataframe(df_table, use_container_width=True, hide_index=True)
+    st.dataframe(df_table, width='stretch', hide_index=True)

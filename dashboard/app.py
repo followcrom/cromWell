@@ -28,7 +28,7 @@ st.markdown("""
             display: none;
         }
         section[data-testid="stSidebar"] > div {
-            padding-top: 2.0rem;
+            padding-top: 0.1rem;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -41,12 +41,12 @@ def main():
     init_session_state()
     render_sidebar()
 
-    # Main content area
-    st.title("CromWell's Dashboard")
+    # # Main content area
+    # st.title("CromWell's Dashboard")
     st.image("https://followcrom.com/images/vinyl.png", caption="", width=200)
-    st.info("Welcome to the CromWell Dashboard! Use the sidebar to navigate through different sections and explore your Fitbit data.")
+    # st.info("Welcome to the CromWell Dashboard! Use the sidebar to navigate through different sections and explore your Fitbit data.")
 
-    st.markdown("---")
+    # st.markdown("---")
 
     # Interactive Calendar
     st.markdown("### 📅 Select Date/s")
@@ -116,11 +116,11 @@ def main():
     col1, col2 = st.columns(2)
 
     with col1:
-        if st.button("🏃 Go to Activity Analysis →", key="activity_btn", use_container_width=True, type="secondary"):
+        if st.button("🏃 Go to Activity Analysis →", key="activity_btn", width='stretch', type="secondary"):
             st.switch_page("pages/1_Activity.py")
 
     with col2:
-        if st.button("😴 Go to Sleep Analysis →", key="sleep_btn", use_container_width=True, type="secondary"):
+        if st.button("😴 Go to Sleep Analysis →", key="sleep_btn", width='stretch', type="secondary"):
             st.switch_page("pages/2_Sleep.py")
 
 if __name__ == "__main__":

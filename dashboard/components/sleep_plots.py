@@ -6,7 +6,7 @@ Reusable chart functions for activity and sleep visualization.
 
 import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
+# from plotly.subplots import make_subplots
 import pandas as pd
 from typing import Optional, Dict, List, Any
 
@@ -137,8 +137,8 @@ def _fill_sleep_gaps(
                 })
             else:
                 print(f"  Gap too small ({gap_seconds:.0f}s), skipping")
-        else:
-            print(f"  No gap at start (level starts at or before window start)")
+        # else:
+        #     print(f"  No gap at start (level starts at or before window start)")
 
     # ==========================================================================
     # STEP 2: Check if stages data ends before session end_time
@@ -222,8 +222,8 @@ def _fill_sleep_gaps(
                 })
             else:
                 print(f"  Gap too small ({gap_seconds:.0f}s), skipping")
-        else:
-            print(f"  No gap at end (level ends at or after window end)")
+        # else:
+        #     print(f"  No gap at end (level ends at or after window end)")
 
     # ==========================================================================
     # STEP 5: Add all gap periods to the levels dataframe

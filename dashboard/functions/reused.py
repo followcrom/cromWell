@@ -26,7 +26,7 @@ def init_session_state():
     if "date_mode" not in st.session_state:
         st.session_state.date_mode = "Single Date"
     if "selected_date" not in st.session_state:
-        st.session_state.selected_date = date.today() - timedelta(days=9)
+        st.session_state.selected_date = date.today() - timedelta(days=7)
         print(f"Initial date is: {st.session_state.selected_date}")
     if "start_date" not in st.session_state:
         st.session_state.start_date = date.today() - timedelta(days=7)
