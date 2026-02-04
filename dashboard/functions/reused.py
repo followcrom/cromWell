@@ -73,8 +73,9 @@ def render_sidebar():
                 )
 
             # Validate date range
-            if st.session_state.start_date > st.session_state.end_date:
-                st.error("Start date must be before end date")
+            if st.session_state.start_date and st.session_state.end_date:
+                if st.session_state.start_date > st.session_state.end_date:
+                    st.error("Start date must be before end date")
 
         st.markdown("---")
         st.markdown("### Pages")

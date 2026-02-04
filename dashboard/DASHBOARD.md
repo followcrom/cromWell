@@ -51,7 +51,10 @@ Once running, you can navigate between pages:
 - **Activity** ([pages/1_Activity.py](pages/1_Activity.py)): Activity metrics, heart rate analysis, and workout details
 - **Sleep** ([pages/2_Sleep.py](pages/2_Sleep.py)): Sleep analysis, stage breakdowns, and vitals tracking
 
-Use the sidebar to switch between pages or adjust date selections.
+Navigation is available through:
+- Sidebar links for switching between pages
+- Homepage buttons ("🏃 Go to Activity Analysis →" and "😴 Go to Sleep Analysis →")
+- Date selection can be adjusted in both the sidebar and on the homepage
 
 ## Technical Implementation
 
@@ -141,6 +144,14 @@ These values come directly from Fitbit's native categorizations as defined in th
 
 ### Page Features
 
+#### Home Page ([app.py](app.py))
+- **Date Mode Toggle**: Radio buttons to switch between Single Date and Date Range modes (available both on homepage and in sidebar)
+- **Interactive Calendar**: Visual calendar showing data availability with color-coded emoji indicators
+- **Month Navigation**: Previous/Next buttons to browse different months
+- **Date Display**: Shows currently selected date or date range in readable format
+- **Quick Navigation**: Full-width buttons to jump directly to Activity or Sleep analysis pages
+- **Range Selection Helper**: Informational message appears when selecting the first date of a range
+
 #### Activity Page ([pages/1_Activity.py](pages/1_Activity.py))
 - **Single Day Mode**: Displays heart rate timeline, hourly steps, activity levels, HR zones, and individual activity details
 - **Multi-Day Mode**: Shows averaged metrics, daily comparisons, and aggregated patterns across the date range
@@ -195,10 +206,14 @@ Core dependencies:
 
 ## Usage Tips
 
-- **Date Selection**: Use the sidebar to toggle between single date and date range selection
-- **Navigation**: Navigate between pages using sidebar links or browser URLs
-- **Calendar**: Use the interactive calendar on the homepage to quickly jump to any date with data
-- **Date Persistence**: The selected date persists across all pages (Activity, Sleep, Home)
+- **Date Selection**: Toggle between single date and date range modes using radio buttons on the homepage or in the sidebar
+- **Navigation**: Navigate between pages using sidebar links, homepage buttons, or browser URLs
+- **Calendar**: Interactive calendar on homepage shows data availability with color-coded indicators
+  - **Single Date Mode**: 🔴 = selected date, 🔵 = data available
+  - **Date Range Mode**: 🟢 = start date, 🔴 = end date, 🔵 = data available
+- **Date Range Selection**: Click start date (shows 🟢), then click end date (shows 🔴). Dates auto-swap if selected in reverse order
+- **Helper Text**: When selecting a range, a message appears above the calendar showing your start date
+- **Date Persistence**: The selected date/range persists across all pages (Activity, Sleep, Home)
 - **Date Limit**: All dates are capped at today's date to prevent future date selection
 - **Cache**: Data is cached for 5 minutes, so switching between pages is instant within that window
 
@@ -239,6 +254,10 @@ The dashboard follows a modular design with separate component files for differe
 
 ### Shared Components
 - **[components/calendar.py](components/calendar.py)**: Interactive calendar widget with data availability indicators
+  - **Single Date Mode**: Displays 🔴 for selected date, 🔵 for dates with data
+  - **Date Range Mode**: Displays 🟢 for start date, 🔴 for end date, 🔵 for dates with data
+  - Helper text appears above calendar when selecting range start
+  - Uses Streamlit's default secondary button styling for clean appearance
 - **[functions/load_data.py](functions/load_data.py)**: Data loading functions for single dates and date ranges
 - **[functions/reused.py](functions/reused.py)**: Shared utilities
   - `init_session_state()` - Initialize Streamlit session state
@@ -266,13 +285,36 @@ fig.update_layout(
 )
 ```
 
-### Customize Calendar Colors
+### Customize Calendar Indicators
 
-The calendar uses emoji indicators by default (🟢, 🔵, 🔴). To modify:
+The calendar uses emoji indicators for visual clarity:
+- 🔴 Red circle: Selected date (single mode) or end date (range mode)
+- 🟢 Green circle: Start date (range mode only)
+- 🔵 Blue circle: Dates with available data
+
+To modify these indicators:
 
 1. Open `components/calendar.py`
-2. Find the button label section (around line 127-138)
-3. Update the emoji or text labels as desired
+2. Find the button label section (around lines 158-175)
+3. Update the emoji or text labels:
+
+```python
+# Single Date Mode
+if is_selected:
+    label = f"🔴 {day}"  # Selected date
+elif has_data and not is_future:
+    label = f"🔵 {day}"  # Data available
+
+# Date Range Mode
+if is_start_date:
+    label = f"🟢 {day}"  # Range start
+elif is_end_date:
+    label = f"🔴 {day}"  # Range end
+elif has_data and not is_future:
+    label = f"🔵 {day}"  # Data available
+```
+
+The calendar uses Streamlit's default secondary button styling (no custom CSS) for a clean, consistent appearance.
 
 ### Modify Heart Rate Zones
 

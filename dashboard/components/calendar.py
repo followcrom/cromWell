@@ -36,7 +36,14 @@ def get_available_dates(data_path: str) -> set:
     return available_dates
 
 
-def render_calendar(data_path: str, selected_date: date, current_month: date = None) -> tuple:
+def render_calendar(
+    data_path: str,
+    selected_date: date,
+    current_month: date = None,
+    date_mode: str = "Single Date",
+    start_date: date = None,
+    end_date: date = None
+) -> tuple:
     """
     Render an interactive calendar showing available data dates.
 
@@ -44,12 +51,25 @@ def render_calendar(data_path: str, selected_date: date, current_month: date = N
         data_path: Path to the data directory
         selected_date: Currently selected date
         current_month: Date representing the month to display (defaults to selected_date's month)
+        date_mode: "Single Date" or "Date Range" mode
+        start_date: Start date for range selection
+        end_date: End date for range selection
 
     Returns:
-        Tuple of (selected_date, current_month) after user interaction
+        Tuple of (selected_date, current_month, start_date, end_date) after user interaction
     """
     if current_month is None:
         current_month = selected_date
+
+    # # Add CSS styling for visual enhancements
+    # st.markdown("""
+    #     <style>
+    #     /* Calendar button styling */
+    #     div[data-testid="column"] button {
+    #         font-size: 24px;
+    #     }
+    #     </style>
+    # """, unsafe_allow_html=True)
 
     # Get available dates
     available_dates = get_available_dates(data_path)
@@ -89,6 +109,8 @@ def render_calendar(data_path: str, selected_date: date, current_month: date = N
 
     # Calendar grid
     new_selected_date = selected_date
+    new_start_date = start_date
+    new_end_date = end_date
 
     for week in cal:
         cols = st.columns(7)
@@ -104,25 +126,36 @@ def render_calendar(data_path: str, selected_date: date, current_month: date = N
                     # Determine styling
                     has_data = dt in available_dates
                     is_selected = dt == selected_date
-                    is_today = dt == date.today()
                     is_future = dt > date.today()
+
+                    # Range mode indicators
+                    is_start_date = date_mode == "Date Range" and dt == start_date
+                    is_end_date = date_mode == "Date Range" and dt == end_date
 
                     # Determine if button should be disabled
                     disabled = not has_data or is_future
 
                     # Create button with color indicators
-                    if is_selected:
-                        label = f"🔴 {day}"
-                        button_type = "primary"
-                    elif is_today:
-                        label = f"🔵 {day}"
-                        button_type = "secondary"
-                    elif has_data and not is_future:
-                        label = f"🟢 {day}"
-                        button_type = "secondary"
+                    if date_mode == "Single Date":
+                        # Single date mode
+                        if is_selected:
+                            label = f"🔴 {day}"
+                        elif has_data and not is_future:
+                            label = f"🔵 {day}"
+                        else:
+                            label = f"{day}"
                     else:
-                        label = f"{day}"
-                        button_type = "secondary"
+                        # Date Range mode
+                        if is_start_date:
+                            label = f"🟢 {day}"
+                        elif is_end_date:
+                            label = f"🔴 {day}"
+                        elif has_data and not is_future:
+                            label = f"🔵 {day}"
+                        else:
+                            label = f"{day}"
+
+                    button_type = "secondary"
 
                     if st.button(
                         label,
@@ -131,16 +164,21 @@ def render_calendar(data_path: str, selected_date: date, current_month: date = N
                         type=button_type,
                         width='stretch'
                     ):
-                        new_selected_date = dt
+                        if date_mode == "Single Date":
+                            new_selected_date = dt
+                        else:
+                            # Range selection
+                            if not start_date or (start_date and end_date):
+                                # First click or restart range
+                                new_start_date = dt
+                                new_end_date = None
+                                new_selected_date = dt
+                            else:
+                                # Second click - complete the range
+                                new_end_date = dt
+                                # Auto-swap if needed
+                                if new_end_date < new_start_date:
+                                    new_start_date, new_end_date = new_end_date, new_start_date
+                                new_selected_date = new_start_date
 
-    # Legend
-    st.markdown("---")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.markdown('<div style="text-align: center;">🟢 = Data available</div>', unsafe_allow_html=True)
-    with col2:
-        st.markdown('<div style="text-align: center;">🔵 = Today</div>', unsafe_allow_html=True)
-    with col3:
-        st.markdown('<div style="text-align: center;">🔴 = Selected</div>', unsafe_allow_html=True)
-
-    return new_selected_date, current_month
+    return new_selected_date, current_month, new_start_date, new_end_date

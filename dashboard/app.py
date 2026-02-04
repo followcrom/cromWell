@@ -43,71 +43,85 @@ def main():
 
     # Main content area
     st.title("CromWell's Dashboard")
-    st.image("https://followcrom.com/images/vinyl.png", caption="Dashboard Overview", width=200)
-    with st.expander("CromWell's Motto"):
-        "Hello, CromWellians! Welcome to your personal fitness dashboard."
+    st.image("https://followcrom.com/images/vinyl.png", caption="", width=200)
+    st.info("Welcome to the CromWell Dashboard! Use the sidebar to navigate through different sections and explore your Fitbit data.")
 
-    st.info("Go, get out, make haste ye venal slaves. I will put an end to your prating. - Oliver Cromwell to the House of Commons, 1653")
+    st.markdown("---")
+
+    # Interactive Calendar
+    st.markdown("### 📅 Select Date/s")
+
+    # Date mode toggle
+    st.session_state.date_mode = st.radio(
+        "Label",
+        ["Single Date", "Date Range"],
+        index=0 if st.session_state.date_mode == "Single Date" else 1,
+        horizontal=True,
+        label_visibility="collapsed"
+    )
 
     if st.session_state.date_mode == "Single Date":
         formatted = format_date(st.session_state.selected_date)
         st.markdown(f"### {formatted}")
     else:
-        start_formatted = format_date(st.session_state.start_date)
-        end_formatted = format_date(st.session_state.end_date)
-        st.markdown(f"### {start_formatted} to {end_formatted}")
-
+        if st.session_state.start_date and st.session_state.end_date:
+            start_formatted = format_date(st.session_state.start_date)
+            end_formatted = format_date(st.session_state.end_date)
+            st.markdown(f"### {start_formatted} to {end_formatted}")
+        elif st.session_state.start_date:
+            start_formatted = format_date(st.session_state.start_date)
+            st.markdown(f"### {start_formatted} to ... (click another date to complete range)")
+        else:
+            st.markdown(f"### Select a date range")
+             
     st.markdown("---")
 
-    # Interactive Calendar
-    st.markdown("### 📅 Select a Date")
-
     # Render calendar and handle date selection
-    new_date, new_month = render_calendar(
+    new_date, new_month, new_start, new_end = render_calendar(
         DATA_PATH,
         st.session_state.selected_date,
-        st.session_state.calendar_month
+        st.session_state.calendar_month,
+        date_mode=st.session_state.date_mode,
+        start_date=st.session_state.start_date,
+        end_date=st.session_state.end_date
     )
 
-    # Update session state if date or month changed
-    if new_date != st.session_state.selected_date:
-        st.session_state.selected_date = new_date
-        st.session_state.date_mode = "Single Date"
-        st.rerun()
+    # Update session state based on calendar interactions
+    should_rerun = False
+
+    if st.session_state.date_mode == "Single Date":
+        if new_date != st.session_state.selected_date:
+            st.session_state.selected_date = new_date
+            should_rerun = True
+    else:  # Date Range mode
+        if new_start != st.session_state.start_date:
+            st.session_state.start_date = new_start
+            should_rerun = True
+        if new_end != st.session_state.end_date:
+            st.session_state.end_date = new_end
+            should_rerun = True
+        # Keep selected_date in sync for compatibility
+        if new_start:
+            st.session_state.selected_date = new_start
 
     if new_month != st.session_state.calendar_month:
         st.session_state.calendar_month = new_month
+        should_rerun = True
+
+    if should_rerun:
         st.rerun()
 
     st.markdown("---")
+
     col1, col2 = st.columns(2)
 
     with col1:
-        # st.markdown("""
-        # ### Activity Analysis
-
-        # View your daily activity metrics including:
-        # - Heart rate timeline with zone tracking
-        # - Hourly steps distribution
-        # - Activity levels breakdown
-        # - Logged workouts analysis
-        # - GPS routes for walks
-        # """)
-        st.page_link("pages/1_Activity.py", label="Go to Activity →", icon="🏃")
+        if st.button("🏃 Go to Activity Analysis →", key="activity_btn", use_container_width=True, type="secondary"):
+            st.switch_page("pages/1_Activity.py")
 
     with col2:
-        # st.markdown("""
-        # ### Sleep Analysis
-
-        # Explore your sleep patterns:
-        # - Sleep timeline with stage visualization
-        # - Sleep stages breakdown (donut chart)
-        # - Multi-day sleep trends
-        # - Nap tracking
-        # - Sleep metrics and efficiency
-        # - Add HRV, right?
-        # """)
-        st.page_link("pages/2_Sleep.py", label="Go to Sleep →", icon="😴")
+        if st.button("😴 Go to Sleep Analysis →", key="sleep_btn", use_container_width=True, type="secondary"):
+            st.switch_page("pages/2_Sleep.py")
 
 if __name__ == "__main__":
     main()
