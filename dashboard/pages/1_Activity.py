@@ -334,6 +334,10 @@ def main():
 
     else:
         # Date range mode
+        if not st.session_state.start_date or not st.session_state.end_date:
+            st.info("Please select both a start and end date to view a date range.")
+            return
+
         if st.session_state.start_date > st.session_state.end_date:
             st.error("Start date must be before end date")
             return

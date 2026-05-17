@@ -36,8 +36,36 @@ def init_session_state():
         st.session_state.calendar_month = date.today()
 
 
+def _on_selected_date_change():
+    st.session_state.selected_date = st.session_state._widget_selected_date
+
+
+def _on_start_date_change():
+    st.session_state.start_date = st.session_state._widget_start_date
+
+
+def _on_end_date_change():
+    st.session_state.end_date = st.session_state._widget_end_date
+
+
 def render_sidebar():
     """Render the sidebar with date selection controls."""
+    # Use separate widget keys (_widget_*) so the canonical persistent keys
+    # (selected_date / start_date / end_date) aren't widget-scoped. In a
+    # multi-page app, Streamlit resets widget-bound keys when navigating
+    # between pages, so binding the canonical keys directly would lose the
+    # user's selection on every page switch.
+    #
+    # Seed widget keys from canonical state BEFORE the widgets render. This
+    # also propagates updates from the home-page custom calendar (which writes
+    # to canonical keys via on_click callbacks) into the sidebar pickers.
+    if st.session_state.get("_widget_selected_date") != st.session_state.selected_date:
+        st.session_state._widget_selected_date = st.session_state.selected_date
+    if st.session_state.get("_widget_start_date") != st.session_state.start_date:
+        st.session_state._widget_start_date = st.session_state.start_date
+    if st.session_state.get("_widget_end_date") != st.session_state.end_date:
+        st.session_state._widget_end_date = st.session_state.end_date
+
     with st.sidebar:
         st.title("CromWell Dashboard")
         st.markdown("---")
@@ -52,24 +80,27 @@ def render_sidebar():
         st.markdown("---")
 
         if st.session_state.date_mode == "Single Date":
-            st.session_state.selected_date = st.date_input(
+            st.date_input(
                 "Select Date",
-                value=st.session_state.selected_date,
-                max_value=date.today()
+                key="_widget_selected_date",
+                max_value=date.today(),
+                on_change=_on_selected_date_change,
             )
         else:
             col1, col2 = st.columns(2)
             with col1:
-                st.session_state.start_date = st.date_input(
+                st.date_input(
                     "Start Date",
-                    value=st.session_state.start_date,
-                    max_value=date.today()
+                    key="_widget_start_date",
+                    max_value=date.today(),
+                    on_change=_on_start_date_change,
                 )
             with col2:
-                st.session_state.end_date = st.date_input(
+                st.date_input(
                     "End Date",
-                    value=st.session_state.end_date,
-                    max_value=date.today()
+                    key="_widget_end_date",
+                    max_value=date.today(),
+                    on_change=_on_end_date_change,
                 )
 
             # Validate date range

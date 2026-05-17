@@ -1124,16 +1124,16 @@ def create_skin_temp_trend_chart(dfs: Dict[str, pd.DataFrame]) -> go.Figure:
         hovertemplate='%{y:+.2f}°C<extra></extra>',
     ))
 
-    # Add baseline at 0
-    fig.add_hline(
-        y=0,
-        line_dash="solid",
-        line_color="gray",
-        line_width=1,
-        annotation_text="Baseline",
-        annotation_position="left top",
-        annotation_font=dict(color="black"),
-    )
+    # # Add baseline at 0
+    # fig.add_hline(
+    #     y=0,
+    #     line_dash="solid",
+    #     line_color="gray",
+    #     line_width=1,
+    #     annotation_text="Baseline",
+    #     annotation_position="left top",
+    #     annotation_font=dict(color="black"),
+    # )
 
     fig.update_layout(
         title=dict(text="Skin Temperature Variation", font=dict(size=20)),

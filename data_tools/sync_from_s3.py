@@ -155,13 +155,15 @@ def append_to__data(df, data_path, timezone='Europe/London'):
 
         print(f"      → {measurement}: {count:,} records ({len(df_subset.columns)} cols) to {dir_name}/")
 
-        # Append to existing partitions or create new ones
+        # Append to existing partitions or create new ones.
+        # delete_matching: replaces a partition's files wholesale, so re-runs
+        # for the same date are idempotent instead of accumulating duplicates.
         df_subset.to_parquet(
             output_dir,
             partition_cols=['date'],
             index=False,
             compression='snappy',
-            existing_data_behavior='overwrite_or_ignore'
+            existing_data_behavior='delete_matching'
         )
 
         processed_measurements.add(measurement)

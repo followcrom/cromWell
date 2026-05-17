@@ -24,3 +24,9 @@ __pycache__/
 
 # Version control
 vC/
+
+# Images
+*.png
+*.jpg
+*.jpeg
+dashboard/images/cromwell.png

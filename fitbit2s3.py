@@ -549,7 +549,10 @@ def fetch_activities_for_date(start_date_str, end_date_str):
     for activity in target_activities:
         # Ensure all numeric fields are floats
         fields = {k: float(v) for k, v in activity.items() if isinstance(v, (int, float)) and k not in ['logId', 'activityTypeId']}
-        utc_time = datetime.fromisoformat(activity['startTime'].strip("Z")).replace(tzinfo=pytz.utc).isoformat()
+        utc_time = safe_datetime_parse(activity['startTime'], add_time=False)
+        if not utc_time:
+            logging.warning(f"Skipping activity with unparseable startTime: {activity.get('startTime')}")
+            continue
         activity_id = f"{utc_time}-{activity['activityName']}"
         # Add the activity record to the collected records
         collected_records.append({

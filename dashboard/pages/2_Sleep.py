@@ -251,23 +251,31 @@ def render_multi_day_sleep(dfs: dict, start_date: date, end_date: date):
 
         with col1:
             hrv_data = dfs.get("HRV")
-            avg_hrv = hrv_data["dailyRmssd"].mean()
-            st.metric("Avg HRV", f"{avg_hrv:.1f} ms")
+            if hrv_data is not None and not hrv_data.empty and "dailyRmssd" in hrv_data:
+                st.metric("Avg HRV", f"{hrv_data['dailyRmssd'].mean():.1f} ms")
+            else:
+                st.metric("Avg HRV", "—")
 
         with col2:
             spo2_data = dfs.get("SPO2_Daily")
-            avg_spo2 = spo2_data["avg"].mean()
-            st.metric("Avg Blood Oxygen Saturation", f"{avg_spo2:.1f}%")
+            if spo2_data is not None and not spo2_data.empty and "avg" in spo2_data:
+                st.metric("Avg Blood Oxygen Saturation", f"{spo2_data['avg'].mean():.1f}%")
+            else:
+                st.metric("Avg Blood Oxygen Saturation", "—")
 
         with col3:
             temp_data = dfs.get("SkinTemperature")
-            avg_temp = temp_data["nightlyRelative"].mean()
-            st.metric("Avg Skin Temp", f"{avg_temp:.2f}°C")
+            if temp_data is not None and not temp_data.empty and "nightlyRelative" in temp_data:
+                st.metric("Avg Skin Temp", f"{temp_data['nightlyRelative'].mean():.2f}°C")
+            else:
+                st.metric("Avg Skin Temp", "—")
 
         with col4:
             efficiency_data = main_sleeps.get("efficiency")
-            avg_efficiency = efficiency_data.mean()
-            st.metric("Avg Sleep Efficiency", f"{avg_efficiency:.1f}%")
+            if efficiency_data is not None and not efficiency_data.empty:
+                st.metric("Avg Sleep Efficiency", f"{efficiency_data.mean():.1f}%")
+            else:
+                st.metric("Avg Sleep Efficiency", "—")
 
     # All sleep sessions table
     st.markdown("---")
@@ -348,6 +356,10 @@ def main():
 
     else:
         # Date range mode
+        if not st.session_state.start_date or not st.session_state.end_date:
+            st.info("Please select both a start and end date to view a date range.")
+            return
+
         if st.session_state.start_date > st.session_state.end_date:
             st.error("Start date must be before end date")
             return

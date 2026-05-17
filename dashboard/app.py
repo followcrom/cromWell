@@ -43,7 +43,7 @@ def main():
 
     # # Main content area
     # st.title("CromWell's Dashboard")
-    st.image("https://followcrom.com/images/vinyl.png", caption="", width=200)
+    st.image("images/cromwell.png", caption="", width=200)
     # st.info("Welcome to the CromWell Dashboard! Use the sidebar to navigate through different sections and explore your Fitbit data.")
 
     # st.markdown("---")
@@ -76,40 +76,10 @@ def main():
              
     st.markdown("---")
 
-    # Render calendar and handle date selection
-    new_date, new_month, new_start, new_end = render_calendar(
-        DATA_PATH,
-        st.session_state.selected_date,
-        st.session_state.calendar_month,
-        date_mode=st.session_state.date_mode,
-        start_date=st.session_state.start_date,
-        end_date=st.session_state.end_date
-    )
-
-    # Update session state based on calendar interactions
-    should_rerun = False
-
-    if st.session_state.date_mode == "Single Date":
-        if new_date != st.session_state.selected_date:
-            st.session_state.selected_date = new_date
-            should_rerun = True
-    else:  # Date Range mode
-        if new_start != st.session_state.start_date:
-            st.session_state.start_date = new_start
-            should_rerun = True
-        if new_end != st.session_state.end_date:
-            st.session_state.end_date = new_end
-            should_rerun = True
-        # Keep selected_date in sync for compatibility
-        if new_start:
-            st.session_state.selected_date = new_start
-
-    if new_month != st.session_state.calendar_month:
-        st.session_state.calendar_month = new_month
-        should_rerun = True
-
-    if should_rerun:
-        st.rerun()
+    # Render calendar. All state mutations happen inside via on_click callbacks,
+    # which fire before the script body reruns, so the sidebar date_input
+    # widgets (bound via key=) always see the latest values.
+    render_calendar(DATA_PATH, date_mode=st.session_state.date_mode)
 
     st.markdown("---")
 
