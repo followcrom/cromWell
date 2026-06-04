@@ -400,7 +400,11 @@ def create_gps_route_map(
             lat=[df_gps[lat_col].iloc[-1]],
             lon=[df_gps[lon_col].iloc[-1]],
             mode="markers",
-            marker=dict(size=15, color="red", symbol="square"),
+            # NB: Scattermapbox on the token-free "open-street-map" style only
+            # renders the default circle marker; non-circle symbols (e.g.
+            # "square") silently fail to draw. Keep End a circle, distinguished
+            # from Start by colour.
+            marker=dict(size=15, color="red"),
             name="End",
             hovertemplate="End<extra></extra>",
         )
