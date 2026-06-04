@@ -39,6 +39,8 @@ source ../cw_venv/bin/activate
 To start the Streamlit dashboard:
 
 ```bash
+cd dashboard
+
 streamlit run app.py
 ```
 
