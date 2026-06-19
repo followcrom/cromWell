@@ -88,13 +88,6 @@ else
     echo ""
 fi
 
-# Apply any GPS heals (complete tracks re-fetched by the VM heal job) into gps.parquet
-echo -e "${GREEN}[heal]${NC} Applying any GPS heals from S3 manifest..."
-echo -e "${YELLOW}--------------------------------------${NC}"
-python apply_heal.py || echo -e "${YELLOW}(apply_heal skipped/failed - non-fatal)${NC}"
-echo -e "${YELLOW}--------------------------------------${NC}"
-echo ""
-
 # Navigate to data directory and clean up
 echo -e "${GREEN}[7/8]${NC} Navigating to data directory and cleaning up..."
 cd ../data

@@ -12,7 +12,7 @@ from typing import Optional, Dict, List, Any
 
 # Heart rate zone configuration
 HR_ZONES = {
-    "Out of Range": {"range": (0, 97), "color": "rgba(135, 206, 235, 0.3)"},
+    "Light": {"range": (0, 97), "color": "rgba(135, 206, 235, 0.3)"},
     "Fat Burn": {"range": (98, 122), "color": "rgba(152, 251, 152, 0.3)"},
     "Cardio": {"range": (123, 154), "color": "rgba(255, 165, 0, 0.3)"},
     "Peak": {"range": (155, 220), "color": "rgba(220, 20, 60, 0.3)"},

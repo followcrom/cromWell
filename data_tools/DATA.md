@@ -36,6 +36,24 @@ py sync_from_s3.py --download-only
 py update_parquet_lowmem.py
 ```
 
+### Check GPS Tracks Are Fully Fetched
+
+After a sync, spot-check that GPS walks fetched completely rather than eyeballing
+maps. A healthy Fitbit track logs a point every ~1s, so the longest hole between
+consecutive points (`max_gap_s`) is the reliable tell — a multi-minute gap means a
+dropped/delayed segment (usually slow phone uploads).
+
+```bash
+py qa_gps.py            # last 20 tracks + flags suspects
+py qa_gps.py --days 30  # only the last 30 days
+py qa_gps.py --all      # every track
+```
+
+Anything flagged with a gap over 60s is a *candidate* to investigate, not a
+confirmed failure — a gap can also be genuine signal loss (tunnel, urban canyon).
+Cross-check the map; if the route looks complete, it's fine. If a gap persists
+after re-fetching, it was real signal loss, not a download problem.
+
 ## Data Structure
 
 ```

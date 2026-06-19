@@ -319,7 +319,7 @@ def calculate_hr_zone_data(df_hr: pd.DataFrame) -> List[Dict]:
         return []
 
     hr_zones = {
-        "Out of Range": (0, 97),
+        "Light": (0, 97),
         "Fat Burn": (98, 122),
         "Cardio": (123, 154),
         "Peak": (155, 220),

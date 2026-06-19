@@ -6,6 +6,7 @@ VENV_DIR="$SCRIPT_DIR/cw_venv"
 ERROR_LOG_FILE="$SCRIPT_DIR/cromwell_error.log"
 EMAIL="followcrom@gmail.com"
 # EMAIL="hello@followcrom.com"
+NTFY_ALERT_TOPIC="followcrom-alerts-84e2b459283c"
 
 # === FUNCTION TO HANDLE FAILURES ===
 handle_failure() {
@@ -25,6 +26,13 @@ $error_message
 "
     echo "$full_report" > "$ERROR_LOG_FILE"
     echo "$full_report" | mail -s "Fitbit2S3 Job Failed" "$EMAIL"
+    # Phone alert via ntfy (emoji come from Tags; keep the Title header ASCII)
+    printf '%s' "$full_report" | curl -s \
+        -H "Title: Fitbit2S3 sync failed" \
+        -H "Priority: high" \
+        -H "Tags: rotating_light" \
+        --data-binary @- \
+        "https://ntfy.sh/$NTFY_ALERT_TOPIC" >/dev/null
     echo "[ERROR] $error_message"
     exit 1
 }

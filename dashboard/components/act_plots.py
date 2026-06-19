@@ -17,7 +17,7 @@ from typing import Optional, Dict, List, Any, Tuple
 # HR_ZONES - Semi-transparent colors for timeline background bands
 # HR_ZONE_COLORS - Solid hex colors for bar charts
 HR_ZONES = {
-    "Out of Range": {"range": (0, 97), "color": "rgba(135, 206, 235, 0.3)"},
+    "Light": {"range": (0, 97), "color": "rgba(135, 206, 235, 0.3)"},
     "Moderate": {"range": (98, 122), "color": "rgba(152, 251, 152, 0.3)"},
     "Vigorous": {"range": (123, 154), "color": "rgba(255, 165, 0, 0.3)"},
     "Peak": {"range": (155, 220), "color": "rgba(220, 20, 60, 0.3)"},
@@ -25,7 +25,7 @@ HR_ZONES = {
 
 # Heart rate zone colors
 HR_ZONE_COLORS = {
-    "Out of Range": "#87CEEB",
+    "Light": "#87CEEB",
     "Fat Burn": "#98FB98",
     "Moderate": "#98FB98",  # Fitbit terminology for Fat Burn
     "Cardio": "#FFA500",
@@ -239,7 +239,7 @@ def create_hr_zones_chart(
 
     # Map to field names in the data
     zone_field_map = {
-        "Out of Range": "Out of Range",
+        "Light": "Out of Range",
         "Moderate": "Fat Burn",
         "Vigorous": "Cardio",
         "Peak": "Peak",

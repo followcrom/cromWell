@@ -30,3 +30,4 @@ vC/
 *.jpg
 *.jpeg
 dashboard/images/cromwell.png
+.claude/settings.json
