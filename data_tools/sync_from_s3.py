@@ -155,7 +155,20 @@ def append_to__data(df, data_path, timezone='Europe/London'):
 
         print(f"      → {measurement}: {count:,} records ({len(df_subset.columns)} cols) to {dir_name}/")
 
-        # Append to existing partitions or create new ones.
+        # Merge with whatever is already in the partitions this file touches.
+        # A backup file normally covers exactly one local day, but when the
+        # Fitbit profile timezone differs from `timezone` (e.g. travelling) it
+        # straddles two, and delete_matching below would otherwise wipe the
+        # neighbouring day's partition down to the overlapping hour.
+        touched = [d for d in df_subset['date'].unique()
+                   if (output_dir / f'date={d}').exists()]
+        if touched:
+            df_existing = pd.read_parquet(output_dir, filters=[('date', 'in', touched)])
+            df_existing['date'] = df_existing['date'].astype(str)
+            df_subset = pd.concat([df_existing, df_subset], ignore_index=True)
+            df_subset = df_subset.drop_duplicates(subset=['time'], keep='last')
+            df_subset = df_subset.sort_values('time')
+
         # delete_matching: replaces a partition's files wholesale, so re-runs
         # for the same date are idempotent instead of accumulating duplicates.
         df_subset.to_parquet(
