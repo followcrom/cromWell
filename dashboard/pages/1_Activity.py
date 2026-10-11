@@ -292,9 +292,8 @@ def render_activity_details(activity: pd.Series, df_hr: pd.DataFrame, df_gps: pd
         except Exception as e:
             st.warning(f"Could not analyze activity HR: {e}")
 
-    # GPS map for walks
-    activity_name = activity.get("ActivityName", "").lower()
-    if "walk" in activity_name and df_gps is not None and not df_gps.empty:
+    # GPS map for any activity with a recorded track (walks, runs, workouts)
+    if df_gps is not None and not df_gps.empty:
         try:
             activity_start, activity_end, _ = extract_activity_time_window(
                 activity
