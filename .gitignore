@@ -15,6 +15,9 @@ docs/
 
 # Tokens
 tokens.json
+api-migration/credentials.json
+api-migration/token.json
+api-migration/UserId.txt
 
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
@@ -31,3 +34,4 @@ vC/
 *.jpeg
 dashboard/images/cromwell.png
 .claude/settings.json
+api-migration/health_api.py
