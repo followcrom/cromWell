@@ -66,7 +66,6 @@ TCX_FETCH_LIMIT = 10
 # --- Unit conversions (the legacy backups are in en_US units) ---
 MM_PER_MILE = 1_609_344
 MM_PER_FOOT = 304.8
-GRAMS_PER_POUND = 453.59237
 
 # --- Global Variables (do not change) ---
 SESSION = None
@@ -349,10 +348,9 @@ def get_daily_summaries(day):
 
     for point in list_data_points("weight", "sample_time.civil_time", *civil_bounds(day)):
         weight = point["weight"]
-        # NOTE: the legacy field is called weight_kg but has always held pounds
-        # (the Fitbit API was called with en_US units). Kept as-is for continuity.
+        # NOTE: the legacy Fitbit backups stored pounds in this field (en_US units).
         add_record("Weight", utc_iso(weight["sampleTime"]["physicalTime"]),
-                   {"weight_kg": round(float(weight["weightGrams"]) / GRAMS_PER_POUND, 1)},
+                   {"weight_kg": round(float(weight["weightGrams"]) / 1000, 1)},
                    tags={"Source": point.get("dataSource", {}).get("platform", "Unknown")})
     logging.info("Recorded Weight summary.")
 
