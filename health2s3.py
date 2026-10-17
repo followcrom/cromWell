@@ -438,27 +438,29 @@ def fetch_activities_for_date(day):
         if "averagePaceSecondsPerMeter" in metrics:
             fields["pace"] = float(metrics["averagePaceSecondsPerMeter"]) * MM_PER_MILE / 1000  # seconds per mile
 
-        add_record("ActivityRecords", utc_time, fields, tags={"ActivityName": activity_name})
-
-        if has_gps and point.get("name") and tcx_fetched_count < TCX_FETCH_LIMIT:
-            logging.info(f"Found GPS data for activity: {activity_name}. Attempting to fetch.")
-            get_tcx_data(point["name"], activity_id)
+        # Google sometimes omits hasGps on walks that do have a route, so try any exercise that covered distance.
+        if (has_gps or "distanceMillimeters" in metrics) and point.get("name") and tcx_fetched_count < TCX_FETCH_LIMIT:
+            logging.info(f"Checking for GPS data for activity: {activity_name}.")
             tcx_fetched_count += 1
+            if get_tcx_data(point["name"], activity_id):
+                fields["hasGps"] = 1.0
+
+        add_record("ActivityRecords", utc_time, fields, tags={"ActivityName": activity_name})
 
 
 def get_tcx_data(data_point_name, activity_id):
-    """Exports an exercise as TCX and parses its GPS trackpoints."""
+    """Exports an exercise as TCX and parses its GPS trackpoints. Returns the number of points recorded."""
     response = request_data_from_health("GET", f"{BASE_URL}/{data_point_name}:exportExerciseTcx", params={"alt": "media"})
     if response is None:
         logging.error(f"Failed to fetch TCX data for {activity_id}")
-        return
+        return 0
 
+    points_added = 0
     try:
         root = ET.fromstring(response.text)
         namespace = {"ns": "http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2"}
         trackpoints = root.findall(".//ns:Trackpoint", namespace)
 
-        points_added = 0
         for trkpt in trackpoints:
             time_elem = trkpt.find("ns:Time", namespace)
             lat_elem = trkpt.find(".//ns:LatitudeDegrees", namespace)
@@ -493,6 +495,7 @@ def get_tcx_data(data_point_name, activity_id):
         logging.error(f"Failed to parse TCX XML for {activity_id}: {e}")
     except Exception as e:
         logging.error(f"Unexpected error processing TCX data for {activity_id}: {e}")
+    return points_added
 
 # =============================================================================
 # ## ☁️ Backup
