@@ -6,6 +6,9 @@ Fetch and analyze your Fitbit health data. The project automatically pulls data 
 
 Data comes from the Google Health API v4 (`https://health.googleapis.com/v4`). The legacy Fitbit Web API (used by `fitbit2s3.py`) is switched off on 2026-10-30.
 
+- Data types: https://developers.google.com/health/data-types
+- Fitbit migration guide: https://developers.google.com/health/migration
+
 ### Fitbit Help & Community
 
 https://support.google.com/fitbit/#topic=14236398
