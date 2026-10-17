@@ -333,7 +333,8 @@ def get_daily_summaries(day):
         temp = point["dailySleepTemperatureDerivations"]
         if "nightlyTemperatureCelsius" in temp and "baselineTemperatureCelsius" in temp:
             relative = float(temp["nightlyTemperatureCelsius"]) - float(temp["baselineTemperatureCelsius"])
-            add_record("SkinTemperature", time_str, {"nightlyRelative": round(relative, 1)})
+            # Fitbit (en_US) reported this delta in °F; keep that unit so the history stays continuous.
+            add_record("SkinTemperature", time_str, {"nightlyRelative": round(relative * 1.8, 1)})
     logging.info("Recorded Skin Temperature summary.")
 
     for point in list_data_points("daily-oxygen-saturation", "date", *date_bounds(day)):
