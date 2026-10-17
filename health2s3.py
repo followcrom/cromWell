@@ -54,8 +54,8 @@ DEVICENAME = os.getenv("DEVICENAME", "PixelWatch3")
 
 # --- Storage ---
 S3_BUCKET = os.getenv("HEALTH_S3_BUCKET", "followcrom")
-# Kept apart from the legacy cromwell/fitbit/ backups until the two have been compared.
-S3_PREFIX = os.getenv("HEALTH_S3_PREFIX", "cromwell/google_health/fitbit_backup")
+# Same prefix and record format as the legacy fitbit2s3.py backups, so sync_from_s3.py reads both.
+S3_PREFIX = os.getenv("HEALTH_S3_PREFIX", "cromwell/fitbit/fitbit_backup")
 
 # --- Script Behavior ---
 # Daily summaries are stamped at noon in this timezone, and "yesterday" is taken from it.

@@ -1,10 +1,10 @@
 # 🏃‍♂️ CromWell 🍋🥝🍌🍐🥥🍈
 
-Fetch and analyze your Fitbit health data. The project automatically pulls data from the Fitbit API, backs it up to AWS S3 as gzipped JSON, and processes it into Parquet format for efficient analysis with Jupyter notebooks. All automated via a cron job that runs once a day. It's your personal health data pipeline! 🚀
+Fetch and analyze your Fitbit health data. The project automatically pulls data from the Google Health API, backs it up to AWS S3 as gzipped JSON, and processes it into Parquet format for efficient analysis with Jupyter notebooks. All automated via a cron job that runs once a day. It's your personal health data pipeline! 🚀
 
-### Fitbit Web API Reference
+### Google Health API
 
-https://dev.fitbit.com/build/reference/web-api/
+Data comes from the Google Health API v4 (`https://health.googleapis.com/v4`). The legacy Fitbit Web API (used by `fitbit2s3.py`) is switched off on 2026-10-30.
 
 ### Fitbit Help & Community
 
@@ -13,7 +13,7 @@ https://support.google.com/fitbit/#topic=14236398
 
 ## 🚀 Workflow
 
-1. **Data Collection** - The `fitbit2s3.py` script runs daily via cron, fetching:
+1. **Data Collection** - The `health2s3.py` script runs daily via cron, fetching:
    - Heart rate (daily summary and intraday)
    - Sleep data (levels, stages, and summaries)
    - Steps (daily and intraday)
@@ -52,14 +52,12 @@ pip install -r requirements.txt
 
 ## 🔐 Configuration
 
-### Fitbit API Credentials
-Make sure you've registered an app on the Fitbit developer portal and have:
+### Google Health API Credentials
+Run the one-off consent flow on a machine with a browser (`cd api-migration && python probe.py`), then copy `api-migration/token.json` to the server. The collector only refreshes it.
 
-- `CLIENT_ID` - Your Fitbit app client ID
-- `CLIENT_SECRET` - Your Fitbit app client secret
-- `TOKEN_FILE_PATH` - Path to store access/refresh tokens
-- `FITBIT_LANGUAGE` - Language setting (default: en_US)
-- `DEVICENAME` - Your Fitbit device name (e.g., PixelWatch3)
+- `GOOGLE_TOKEN_FILE` - Path to the token (default: `api-migration/token.json`)
+- `HEALTH_S3_PREFIX` - S3 key prefix (default: `cromwell/fitbit/fitbit_backup`)
+- `DEVICENAME` - Your device name (e.g., PixelWatch3)
 
 ### AWS S3 Configuration
 Configure AWS credentials for S3 backup:
@@ -70,17 +68,16 @@ Configure AWS credentials for S3 backup:
 - `AWS_REGION` - AWS region (if needed)
 
 ### Logging
-- `FITBIT_LOG_FILE_PATH` - Path for log file output
+- `HEALTH_LOG_FILE_PATH` - Path for log file output
 
 All credentials should be stored securely in a `.env` file (not committed to git).
 
 ## 🖥️ Server Deployment
 
-On the server (dobox), set proper permissions:
+On the server (dobox), `run_health2s3.sh` runs from `followcrom`'s crontab at 02:45:
 
 ```bash
-chmod 755 run_fitbit2s3.sh
-chown root:root run_fitbit2s3.sh
+chmod 755 run_health2s3.sh
 ```
 
 The script includes email notifications on failures and comprehensive error logging.
@@ -89,8 +86,9 @@ The script includes email notifications on failures and comprehensive error logg
 
 ```
 cromWell/
-├── fitbit2s3.py              # Main script to fetch Fitbit data and upload to S3
-├── run_fitbit2s3.sh          # Cron job wrapper script with error handling
+├── health2s3.py              # Main script to fetch Google Health data and upload to S3
+├── run_health2s3.sh          # Cron job wrapper script with error handling
+├── fitbit2s3.py              # Legacy Fitbit API collector (API off 2026-10-30)
 ├── requirements.txt          # Python dependencies
 ├── data/                     # Local Parquet data storage
 │   ├── daily_summaries.parquet
@@ -118,7 +116,7 @@ cromWell/
 
 ## ✨ Key Features
 
-- **Automated Data Collection**: Daily cron job fetches data from Fitbit API
+- **Automated Data Collection**: Daily cron job fetches data from the Google Health API
 - **Cloud Backup**: Gzipped JSON files stored in AWS S3
 - **Efficient Storage**: Parquet format for fast querying and analysis
 - **Memory-Efficient Updates**: Incremental data updates without loading entire datasets
