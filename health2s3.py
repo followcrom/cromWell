@@ -48,14 +48,14 @@ OVERWRITE_LOG_FILE = True
 # --- Google Health API Configuration ---
 # The token file is created by the one-off consent flow (api-migration/probe.py) on a
 # machine with a browser, then copied here. This script only ever refreshes it.
-GOOGLE_TOKEN_FILE = os.getenv("GOOGLE_TOKEN_FILE", str(SCRIPT_DIR / "api-migration" / "token.json"))
+GOOGLE_TOKEN_FILE = os.getenv("GOOGLE_TOKEN_FILE")
 BASE_URL = "https://health.googleapis.com/v4"
-DEVICENAME = os.getenv("DEVICENAME", "PixelWatch3")
+DEVICENAME = os.getenv("DEVICENAME")
 
 # --- Storage ---
-S3_BUCKET = os.getenv("HEALTH_S3_BUCKET", "followcrom")
+S3_BUCKET = os.getenv("HEALTH_S3_BUCKET")
 # Same prefix and record format as the legacy fitbit2s3.py backups, so sync_from_s3.py reads both.
-S3_PREFIX = os.getenv("HEALTH_S3_PREFIX", "cromwell/fitbit/fitbit_backup")
+S3_PREFIX = os.getenv("HEALTH_S3_PREFIX")
 
 # --- Script Behavior ---
 # Daily summaries are stamped at noon in this timezone, and "yesterday" is taken from it.

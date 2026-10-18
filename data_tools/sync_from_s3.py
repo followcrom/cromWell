@@ -23,7 +23,6 @@ import argparse
 # AWS S3 Configuration
 S3_BUCKET = 'followcrom'
 S3_PREFIX = 'cromwell/fitbit/'
-AWS_PROFILE = 'surface'  # From your notebooks
 
 # Measurement categorization
 HIGH_FREQUENCY_INTRADAY = {
@@ -262,7 +261,7 @@ def sync_from_s3(data_dir='../data',
     # Initialize boto3 session
     print(f"🔗 Connecting to S3 bucket: s3://{S3_BUCKET}/{S3_PREFIX}")
     try:
-        session = boto3.Session(profile_name=AWS_PROFILE)
+        session = boto3.Session()
         s3 = session.client('s3')
     except Exception as e:
         print(f"❌ Error connecting to S3: {e}")
