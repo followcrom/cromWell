@@ -4,7 +4,7 @@ Fetch and analyze your Fitbit health data. The project automatically pulls data 
 
 ### Google Health API
 
-Data comes from the Google Health API v4 (`https://health.googleapis.com/v4`). The legacy Fitbit Web API (used by `fitbit2s3.py`) is switched off on 2026-10-30.
+Data comes from the Google Health API v4 (`https://health.googleapis.com/v4`). It replaces the legacy Fitbit Web API, which is switched off on 2026-10-30.
 
 - Data types: https://developers.google.com/health/data-types
 - Fitbit migration guide: https://developers.google.com/health/migration
@@ -91,7 +91,6 @@ The script includes email notifications on failures and comprehensive error logg
 cromWell/
 ├── health2s3.py              # Main script to fetch Google Health data and upload to S3
 ├── run_health2s3.sh          # Cron job wrapper script with error handling
-├── fitbit2s3.py              # Legacy Fitbit API collector (API off 2026-10-30)
 ├── requirements.txt          # Python dependencies
 ├── data/                     # Local Parquet data storage
 │   ├── daily_summaries.parquet
