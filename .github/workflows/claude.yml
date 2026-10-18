@@ -1,0 +1,61 @@
+name: Claude Code
+
+# Interactive mode: Claude responds when someone comments "@claude" on an issue
+# or PR, or opens an issue whose title/body mentions it. No `prompt` input is
+# set, which is what selects interactive mode.
+#
+# Only users with WRITE access to this repository can trigger a run, and bot
+# actors are rejected. That check is enforced by the action itself, not by the
+# `if` below (which only avoids spinning up a runner for unrelated comments).
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+  issues:
+    types: [opened, assigned]
+
+jobs:
+  claude:
+    if: |
+      contains(github.event.comment.body, '@claude') ||
+      contains(github.event.review.body, '@claude') ||
+      contains(github.event.issue.body, '@claude') ||
+      contains(github.event.issue.title, '@claude')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # Broad write access, as requested: edit files, push branches, open/close and
+    # merge PRs, manage issues, re-run workflows.
+    #   id-token: write  -> required for the action's GitHub App authentication
+    #   actions:   write -> re-run / cancel workflow runs (read alone only views them)
+    #   contents:  write -> commit and push
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: write
+      checks: write
+      statuses: write
+      discussions: write
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # Full history so Claude can rebase, cherry-pick and inspect blame.
+          fetch-depth: 0
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          # Uses your Claude subscription. Generate with `claude setup-token`,
+          # then add it under Settings -> Secrets and variables -> Actions.
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # To bill against the API instead, swap the line above for:
+          # anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+          claude_args: |
+            --allowedTools "Bash(gh:*),Bash(git:*),Bash(npm:*),Bash(npx:*)"
