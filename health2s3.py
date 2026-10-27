@@ -11,7 +11,7 @@ It's designed to be run once daily via a cron job, fetching the previous day.
 Usage:
     python health2s3.py                      # yesterday -> S3
     python health2s3.py 2026-10-01           # a specific civil date -> S3
-    python health2s3.py 2026-10-01 --dry-run # write ./health_backup_<date>.json.gz, no upload
+    python health2s3.py 2026-10-01 --dry-run # write ./dry-run-<date>.json.gz, no upload
 """
 import argparse
 import boto3
@@ -48,14 +48,14 @@ OVERWRITE_LOG_FILE = True
 # --- Google Health API Configuration ---
 # The token file is created by the one-off consent flow (api-migration/probe.py) on a
 # machine with a browser, then copied here. This script only ever refreshes it.
-GOOGLE_TOKEN_FILE = os.getenv("GOOGLE_TOKEN_FILE", str(SCRIPT_DIR / "api-migration" / "token.json"))
+GOOGLE_TOKEN_FILE = os.getenv("GOOGLE_TOKEN_FILE")
 BASE_URL = "https://health.googleapis.com/v4"
-DEVICENAME = os.getenv("DEVICENAME", "PixelWatch3")
+DEVICENAME = os.getenv("DEVICENAME")
 
 # --- Storage ---
-S3_BUCKET = os.getenv("HEALTH_S3_BUCKET", "followcrom")
+S3_BUCKET = os.getenv("HEALTH_S3_BUCKET")
 # Same prefix and record format as the legacy fitbit2s3.py backups, so sync_from_s3.py reads both.
-S3_PREFIX = os.getenv("HEALTH_S3_PREFIX", "cromwell/fitbit/fitbit_backup")
+S3_PREFIX = os.getenv("HEALTH_S3_PREFIX")
 
 # --- Script Behavior ---
 # Daily summaries are stamped at noon in this timezone, and "yesterday" is taken from it.
@@ -533,6 +533,15 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Write a local json.gz instead of uploading to S3")
     args = parser.parse_args()
 
+    # Fail fast on missing config; the S3 settings aren't needed for a dry run.
+    required = ["GOOGLE_TOKEN_FILE", "DEVICENAME"]
+    if not args.dry_run:
+        required += ["HEALTH_S3_BUCKET", "HEALTH_S3_PREFIX"]
+    missing = [name for name in required if not os.getenv(name)]
+    if missing:
+        logging.error(f"Missing required environment variables: {', '.join(missing)}. Set them in .env or the environment.")
+        sys.exit(1)
+
     logging.info("--- Starting Google Health data sync script ---")
 
     try:
@@ -556,7 +565,7 @@ def main():
         if not collected_records:
             logging.warning("No valid records collected.")
         elif args.dry_run:
-            out_file = Path(f"health_backup_{day}.json.gz")
+            out_file = Path(f"dry-run-{day}.json.gz")
             out_file.write_bytes(compress_records(collected_records).getvalue())
             logging.info(f"✅ Dry run: wrote {len(collected_records)} records to {out_file}")
         else:

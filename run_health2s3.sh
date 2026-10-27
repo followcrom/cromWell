@@ -3,7 +3,7 @@
 # === CONFIGURATION ===
 SCRIPT_DIR="/var/www/cromwell"
 VENV_DIR="$SCRIPT_DIR/cw_venv"
-ERROR_LOG_FILE="$SCRIPT_DIR/cromwell_health_error.log"
+ERROR_LOG_FILE="$SCRIPT_DIR/cromwell_error.log"
 EMAIL="followcrom@gmail.com"
 # EMAIL="hello@followcrom.com"
 NTFY_ALERT_TOPIC="followcrom-alerts-84e2b459283c"

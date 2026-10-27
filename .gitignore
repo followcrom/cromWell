@@ -18,6 +18,7 @@ tokens.json
 api-migration/credentials.json
 api-migration/token.json
 api-migration/UserId.txt
+token_prod.json
 
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/

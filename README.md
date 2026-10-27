@@ -55,25 +55,33 @@ pip install -r requirements.txt
 
 ## 🔐 Configuration
 
+`health2s3.py` reads its settings from the environment, or from a `.env` file in the project root (not committed to git). It has no built-in defaults: if a required variable is missing, it logs which ones and exits with code 1 before calling any API.
+
 ### Google Health API Credentials
 Run the one-off consent flow on a machine with a browser (`cd api-migration && python probe.py`), then copy `api-migration/token.json` to the server. The collector only refreshes it.
 
-- `GOOGLE_TOKEN_FILE` - Path to the token (default: `api-migration/token.json`)
-- `HEALTH_S3_PREFIX` - S3 key prefix (default: `cromwell/fitbit/fitbit_backup`)
-- `DEVICENAME` - Your device name (e.g., PixelWatch3)
+| Variable | Required | Description |
+|---|---|---|
+| `GOOGLE_TOKEN_FILE` | Yes | Path to the OAuth token, e.g. `api-migration/token.json` |
+| `DEVICENAME` | Yes | Device name written into the record tags, e.g. `PixelWatch3` |
+| `HEALTH_S3_BUCKET` | Yes, except with `--dry-run` | S3 bucket for the backups |
+| `HEALTH_S3_PREFIX` | Yes, except with `--dry-run` | S3 key prefix, e.g. `cromwell/fitbit/fitbit_backup` (files are named `<prefix>_<date>.json.gz`) |
+| `HOME_TIMEZONE` | No | Timezone used to work out "yesterday" and stamp daily summaries (default `Europe/London`) |
+| `HEALTH_LOG_FILE_PATH` | No | Also write the log to this file (it's overwritten on each run) |
 
-### AWS S3 Configuration
-Configure AWS credentials for S3 backup:
+### AWS Credentials
+`health2s3.py` and `data_tools/sync_from_s3.py` use boto3's standard credential chain, so no AWS profile is hard-coded. Use one of:
 
-- `AWS_ACCESS_KEY_ID` - Your AWS access key
-- `AWS_SECRET_ACCESS_KEY` - Your AWS secret key
-- `S3_BUCKET_NAME` - S3 bucket for data storage
-- `AWS_REGION` - AWS region (if needed)
+- `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (and `AWS_REGION` if needed)
+- the default profile in `~/.aws/credentials` (or set `AWS_PROFILE`)
+- an IAM role
 
-### Logging
-- `HEALTH_LOG_FILE_PATH` - Path for log file output
+### Test Run
+Fetch one day without uploading. This writes `./dry-run-<date>.json.gz`:
 
-All credentials should be stored securely in a `.env` file (not committed to git).
+```bash
+python health2s3.py 2026-10-01 --dry-run
+```
 
 ## 🖥️ Server Deployment
 
