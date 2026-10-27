@@ -265,7 +265,7 @@ def sync_from_s3(data_dir='../data',
         s3 = session.client('s3')
     except Exception as e:
         print(f"❌ Error connecting to S3: {e}")
-        print(f"   Make sure AWS profile '{AWS_PROFILE}' is configured")
+        print("   Make sure AWS credentials are configured (env vars, default profile or IAM role)")
         return
 
     # Load existing state or create new

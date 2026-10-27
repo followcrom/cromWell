@@ -11,7 +11,7 @@ It's designed to be run once daily via a cron job, fetching the previous day.
 Usage:
     python health2s3.py                      # yesterday -> S3
     python health2s3.py 2026-10-01           # a specific civil date -> S3
-    python health2s3.py 2026-10-01 --dry-run # write ./health_backup_<date>.json.gz, no upload
+    python health2s3.py 2026-10-01 --dry-run # write ./dry-run-<date>.json.gz, no upload
 """
 import argparse
 import boto3
@@ -532,6 +532,15 @@ def main():
     parser.add_argument("date", nargs="?", help="Civil date to fetch (YYYY-MM-DD). Default: yesterday")
     parser.add_argument("--dry-run", action="store_true", help="Write a local json.gz instead of uploading to S3")
     args = parser.parse_args()
+
+    # Fail fast on missing config; the S3 settings aren't needed for a dry run.
+    required = ["GOOGLE_TOKEN_FILE", "DEVICENAME"]
+    if not args.dry_run:
+        required += ["HEALTH_S3_BUCKET", "HEALTH_S3_PREFIX"]
+    missing = [name for name in required if not os.getenv(name)]
+    if missing:
+        logging.error(f"Missing required environment variables: {', '.join(missing)}. Set them in .env or the environment.")
+        sys.exit(1)
 
     logging.info("--- Starting Google Health data sync script ---")
 
