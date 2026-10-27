@@ -556,7 +556,7 @@ def main():
         if not collected_records:
             logging.warning("No valid records collected.")
         elif args.dry_run:
-            out_file = Path(f"health_backup_{day}.json.gz")
+            out_file = Path(f"dry-run-{day}.json.gz")
             out_file.write_bytes(compress_records(collected_records).getvalue())
             logging.info(f"✅ Dry run: wrote {len(collected_records)} records to {out_file}")
         else:
